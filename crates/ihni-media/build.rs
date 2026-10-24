@@ -1,10 +1,10 @@
 //! Builds the C shim and links the static FFmpeg libraries.
 //!
 //! The libraries come from a dev prefix named by `FFMPEG_DIR`. The project does
-//! not bundle them; `scripts/fetch-ffmpeg-libs.sh` downloads and verifies the
-//! pinned GenKFR asset and prints the value to use.
+//! not bundle them; `scripts/fetch-ffmpeg-libs.sh` downloads this repository's
+//! `ffmpeg-libs-*` release and prints the value to use.
 //!
-//! The pinned asset is a vcpkg `x64-windows-static-md-release` build: static
+//! The release asset is a vcpkg `x64-windows-static-md-release` build: static
 //! libraries against the **dynamic** C runtime. Building with `+crt-static`
 //! would produce a binary that cannot link, so that configuration is rejected
 //! here rather than failing later with an unexplained unresolved symbol.

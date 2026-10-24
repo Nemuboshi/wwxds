@@ -35,10 +35,11 @@ jobs:
           ffmpeg -version | head -n 1
           ffprobe -version | head -n 1
 
-      # The pinned FFmpeg dev prefix. The script downloads the release asset,
-      # verifies its sha256 and byte count, extracts it, and prints the prefix.
-      # `cygpath -m` converts it to the Windows form build.rs needs, because
-      # build.rs is a Windows process and cannot read a /d/... style path.
+      # The FFmpeg dev prefix, published by this repository's ffmpeg-libs
+      # workflow. The script downloads the release asset, extracts it, and
+      # prints the prefix. `cygpath -m` converts it to the Windows form build.rs
+      # needs, because build.rs is a Windows process and cannot read a /d/...
+      # style path.
       - name: Fetch the pinned FFmpeg libraries
         shell: bash
         env:

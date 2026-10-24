@@ -1,0 +1,112 @@
+name: FFmpeg Static Libraries
+
+# Builds the static FFmpeg development prefix that ihni links, and publishes it
+# as a release asset under the reserved `ffmpeg-libs-*` tag prefix. Existing
+# assets are reused rather than rebuilt: a version is built once.
+#
+# This workflow never runs on push or pull_request. It is started by hand when
+# the FFmpeg version changes, and the checks workflow then downloads the asset
+# through scripts/fetch-ffmpeg-libs.sh.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'FFmpeg version label for the asset, for example 9.0.2'
+        required: true
+        default: '9.0.2'
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # Release libraries only, with the dynamic CRT that Rust uses.
+  VCPKG_OVERLAY_TRIPLETS: '${{ github.workspace }}/.github/triplets'
+  TRIPLET: 'x64-windows-static-md-release'
+
+jobs:
+  libs:
+    name: Build FFmpeg static libraries
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Work out the release tag
+        id: tag
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          [[ "$VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || { echo 'invalid FFmpeg version label' >&2; exit 1; }
+          echo "tag=ffmpeg-libs-$VERSION" >> "$GITHUB_OUTPUT"
+          echo "asset=ffmpeg-libs-$VERSION.zip" >> "$GITHUB_OUTPUT"
+          echo "Using tag ffmpeg-libs-$VERSION"
+
+      # If the asset is already published, stop here. A version is built once;
+      # a rebuild of the same tag would produce different bytes with no gain.
+      - name: Look for an existing asset
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          ASSET: ${{ steps.tag.outputs.asset }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+              --jq '.assets[].name' | grep -Fxq "$ASSET"; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "release $TAG: expected asset found=${{ steps.existing.outputs.found }}"
+
+      - name: Install static FFmpeg
+        if: steps.existing.outputs.found != 'true'
+        run: |
+          [[ -f /c/vcpkg/vcpkg.exe ]] || { echo 'vcpkg is not at C:/vcpkg' >&2; exit 1; }
+
+          # The libraries build.rs links. swscale is omitted: the analysis-plane
+          # filter is the project's own integer code, and the link gate asserts
+          # the binary contains none of it.
+          /c/vcpkg/vcpkg.exe install "ffmpeg[avcodec,avformat,swresample,zlib]:$TRIPLET"
+
+      - name: Package the libraries
+        if: steps.existing.outputs.found != 'true'
+        env:
+          ASSET: ${{ steps.tag.outputs.asset }}
+        run: |
+          installed="/c/vcpkg/installed/$TRIPLET"
+          [[ -d "$installed/lib" ]] || { echo "no libraries at $installed/lib" >&2; exit 1; }
+
+          # Only headers, libraries and a record of the package versions.
+          staging="$(cygpath -u "$RUNNER_TEMP")/ffmpeg-libs"
+          rm -rf "$staging"
+          mkdir -p "$staging"
+          cp -R "$installed/include" "$installed/lib" "$staging/"
+          /c/vcpkg/vcpkg.exe list > "$staging/PACKAGES.txt"
+
+          zip="$(pwd)/$ASSET"
+          rm -f "$zip"
+          (cd "$staging" && 7z a -tzip "$(cygpath -w "$zip")" .)
+          bytes="$(wc -c < "$zip")"
+          echo "packed $zip, $bytes bytes"
+          (( bytes >= 1048576 )) || { echo 'the archive is suspiciously small' >&2; exit 1; }
+
+      - name: Publish the asset
+        if: steps.existing.outputs.found != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: 'FFmpeg static libraries ${{ inputs.version }}'
+          prerelease: true
+          body: |
+            Static FFmpeg development prefix for building ihni.
+
+            Built by the `FFmpeg Static Libraries` workflow from the vcpkg port.
+            Contents: `include/`, `lib/` and `PACKAGES.txt`.
+
+            This release is a build input, not a program release. The reserved
+            `ffmpeg-libs-` tag prefix keeps it apart from program releases.
+          files: ${{ steps.tag.outputs.asset }}

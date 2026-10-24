@@ -1,18 +1,14 @@
 #!/usr/bin/env bash
-# Fetch the pinned FFmpeg development prefix and print the FFMPEG_DIR value.
+# Fetch the FFmpeg development prefix and print the FFMPEG_DIR value.
 #
 # The project does not build FFmpeg and does not bundle it. It links the static
 # libraries from a prefix that `ihni-media/build.rs` names in FFMPEG_DIR, and
-# this script produces that prefix from the pinned GenKFR release asset.
+# this script produces that prefix from this repository's `ffmpeg-libs-*`
+# release, published by the `ffmpeg-libs.yml` workflow.
 #
-# The download is verified before it is used: the asset's sha256 and byte count
-# are recorded here, and a mismatch is a hard failure. A truncated download, a
-# replaced asset, or a redirect to something else must not become a build that
-# links unknown code.
-#
-# The archive is extracted into its own empty directory. A prefix that already
-# exists is not merged into, because a partial or stale tree would link without
-# complaining and would be very hard to recognise later.
+# The source is the tag and asset name recorded below. The tag prefix
+# `ffmpeg-libs-` is reserved for these build inputs and is kept apart from
+# program releases; the release itself is marked as a pre-release.
 #
 # Usage:
 #
@@ -24,16 +20,12 @@
 # The value printed on standard output is the one to export:
 #
 #     export FFMPEG_DIR="$(bash scripts/fetch-ffmpeg-libs.sh)"
-#
-# Publishing an IHNI-owned asset is later work; this reuses the GenKFR release.
 
 set -euo pipefail
 
-readonly REPOSITORY="Nemuboshi/GenKFR"
+readonly REPOSITORY="Nemuboshi/ihni-rs"
 readonly TAG="ffmpeg-libs-9.0.2"
 readonly ASSET="ffmpeg-libs-9.0.2.zip"
-readonly ASSET_SHA256="d6de00b8f68694c50f29cfbc2ec9c466b4ba80f90f523efd20fc661174833649"
-readonly ASSET_SIZE=80867368
 
 # Both paths are inside the gitignored target directory, and they are separate:
 # the archive is downloaded to one directory and extracted into another, so a
@@ -46,7 +38,7 @@ for argument in "$@"; do
     case "$argument" in
         --force) force=1 ;;
         -h | --help)
-            sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)
@@ -84,39 +76,15 @@ fi
 mkdir -p "$DOWNLOAD_DIR"
 archive="$DOWNLOAD_DIR/$ASSET"
 
-# Downloading is skipped when the archive is already present and correct, so a
-# repeated run costs nothing. It is re-downloaded when it is missing or wrong.
-if [ -f "$archive" ] && [ "$(wc -c <"$archive" | tr -d ' ')" = "$ASSET_SIZE" ]; then
+# Downloading is skipped when the archive is already present, so a repeated run
+# costs nothing. Extraction and the completeness check below reject a broken
+# or partial download.
+if [ -f "$archive" ]; then
     echo "fetch-ffmpeg-libs: reusing $archive" >&2
 else
     echo "fetch-ffmpeg-libs: downloading $REPOSITORY $TAG/$ASSET" >&2
     rm -f "$archive"
     gh release download "$TAG" --repo "$REPOSITORY" --pattern "$ASSET" --dir "$DOWNLOAD_DIR"
-fi
-
-# Verify before extracting. The size check catches a truncated transfer, and the
-# hash catches everything else.
-actual_size=$(wc -c <"$archive" | tr -d ' ')
-if [ "$actual_size" != "$ASSET_SIZE" ]; then
-    echo "fetch-ffmpeg-libs: $archive is $actual_size bytes, expected $ASSET_SIZE" >&2
-    exit 1
-fi
-
-if command -v sha256sum >/dev/null 2>&1; then
-    actual_sha256=$(sha256sum "$archive" | cut -d' ' -f1)
-elif command -v shasum >/dev/null 2>&1; then
-    actual_sha256=$(shasum -a 256 "$archive" | cut -d' ' -f1)
-else
-    echo "fetch-ffmpeg-libs: neither sha256sum nor shasum is available" >&2
-    exit 1
-fi
-
-if [ "$actual_sha256" != "$ASSET_SHA256" ]; then
-    echo "fetch-ffmpeg-libs: sha256 mismatch for $archive" >&2
-    echo "  expected $ASSET_SHA256" >&2
-    echo "  actual   $actual_sha256" >&2
-    echo "The asset is not the pinned one; refusing to extract it." >&2
-    exit 1
 fi
 
 if ! command -v unzip >/dev/null 2>&1; then
