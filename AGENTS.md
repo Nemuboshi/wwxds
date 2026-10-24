@@ -134,7 +134,7 @@
 - Test edge cases: repeated frames, hard cuts, flashes, short shots, truncated input, invalid strides, VFR, and missing timestamps.
 - Verify frame indexes and timestamps independently of detection results.
 - Compare detector results against the reference oracle in `oracle/wwxd-golden`.
-- Compare analysis planes of every GPU backend against the CPU implementation byte for byte on the committed fixtures.
+- Compare analysis planes of every GPU backend against the CPU implementation byte for byte — on real media through the GPU integration tests, not only on synthetic fixtures.
 - Do not change expected test results to make a failing test pass.
 - Keep benchmark inputs and configurations consistent across revisions.
 
