@@ -1,14 +1,14 @@
-//! Golden-vector generator driver.
+//! Reference-vector generator driver.
 //!
 //! Replays every committed detector fixture through the pinned WWXD C control and
-//! writes `tests/fixtures/detect/golden.json`. Run it with:
+//! writes `tests/fixtures/detect/reference.json`. Run it with:
 //!
 //! ```text
-//! cargo run --manifest-path oracle/wwxd-golden/Cargo.toml
+//! cargo run --manifest-path oracle/wwxd-reference/Cargo.toml
 //! ```
 //!
 //! from anywhere in the repository. It reads the committed blobs, so it never
-//! recompiles fixture data, and it is the only writer of `golden.json`; the Rust
+//! recompiles fixture data, and it is the only writer of `reference.json`; the Rust
 //! integration test only reads that file.
 
 use std::ffi::{c_int, c_void};
@@ -108,7 +108,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "fixtures": outputs,
     });
     let text = format!("{}\n", serde_json::to_string_pretty(&document)?);
-    let output_path = dir.join("golden.json");
+    let output_path = dir.join("reference.json");
     std::fs::write(&output_path, text)?;
     println!("wrote {}", output_path.display());
     Ok(())

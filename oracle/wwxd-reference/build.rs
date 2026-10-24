@@ -1,6 +1,6 @@
-//! Build script for the WWXD golden-vector oracle.
+//! Build script for the WWXD reference-vector oracle.
 //!
-//! Compiles the pinned `detection.c` with `golden.c` and enforces two gates: the
+//! Compiles the pinned `detection.c` with `reference.c` and enforces two gates: the
 //! reference must be checked out at the documented commit, and `detection.c` /
 //! `detection.h` must be unmodified. The oracle therefore cannot silently drift
 //! from the control it is meant to reproduce.
@@ -41,16 +41,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("cargo:rustc-env=WWXD_REFERENCE_COMMIT={REFERENCE_COMMIT}");
-    println!("cargo:rerun-if-changed=golden.c");
+    println!("cargo:rerun-if-changed=reference.c");
     println!("cargo:rerun-if-changed=VSHelper.h");
     println!("cargo:rerun-if-changed={}", source.display());
 
     cc::Build::new()
         .file(source.join("detection.c"))
-        .file("golden.c")
+        .file("reference.c")
         .include(source)
         .include(".")
         .std("c11")
-        .compile("wwxd_golden");
+        .compile("wwxd_reference");
     Ok(())
 }

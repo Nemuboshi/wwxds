@@ -69,7 +69,7 @@ pub(crate) struct Geometry {
     /// Byte offset of the inner (border-stripped) origin in a padded plane.
     ///
     /// The reference harness passes `plane + 64 * edged_width + 64` as
-    /// `pRef`/`pCurrent` (`oracle/wwxd-golden/golden.c`); every core coordinate is
+    /// `pRef`/`pCurrent` (`oracle/wwxd-reference/reference.c`); every core coordinate is
     /// relative to that origin.
     pub(crate) inner_base: usize,
 }

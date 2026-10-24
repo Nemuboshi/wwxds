@@ -1,4 +1,4 @@
-/* Golden-vector oracle: the pinned WWXD control, exposed for a Rust driver.
+/* Reference-vector oracle: the pinned WWXD control, exposed for a Rust driver.
  *
  * bench_wwxd_create / bench_wwxd_process / bench_wwxd_free reproduce the
  * reference harness behaviour field for field (same MBParam layout, same

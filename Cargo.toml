@@ -16,11 +16,11 @@ tempfile = "3.23"
 [workspace]
 members = ["crates/*"]
 
-# The oracle is a development-only tool that regenerates the pinned golden
+# The oracle is a development-only tool that regenerates the pinned reference
 # vectors, and it declares its own workspace so it never compiles C as part of a
 # normal build. Listing it here records that it is deliberately outside this
 # workspace rather than merely unmatched by the member glob.
-exclude = ["oracle/wwxd-golden"]
+exclude = ["oracle/wwxd-reference"]
 
 # Every member is built and tested by default. A root package plus a member glob
 # would otherwise make a bare `cargo test` cover only the root package, which

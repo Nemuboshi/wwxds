@@ -110,8 +110,8 @@
 - Do not remove short shots only because they contain few frames.
 - Do not classify every bright frame as a flash.
 - Do not add motion estimation, edge processing, or expensive operations without measured benefit.
-- The reference implementation is the pinned WWXD `detection.c` in `oracle/wwxd-golden`.
-- All changes to the decision core must reproduce the committed golden vectors: decision, shot age, macroblock predictors, and plane digests.
+- The reference implementation is the pinned WWXD `detection.c` in `oracle/wwxd-reference`.
+- All changes to the decision core must reproduce the committed reference vectors: decision, shot age, macroblock predictors, and plane digests.
 - The decision core is independent of the analysis-plane filter. A filter change must be justified by a boundary comparison over the committed video corpus, recorded in `docs/Performance.md`, before it is accepted.
 - Do not claim exact reproduction of the Fraunhofer 2004 system without evidence.
 
@@ -133,7 +133,7 @@
 - Add integration tests for the complete video processing pipeline.
 - Test edge cases: repeated frames, hard cuts, flashes, short shots, truncated input, invalid strides, VFR, and missing timestamps.
 - Verify frame indexes and timestamps independently of detection results.
-- Compare detector results against the reference oracle in `oracle/wwxd-golden`.
+- Compare detector results against the reference oracle in `oracle/wwxd-reference`.
 - Compare analysis planes of every GPU backend against the CPU implementation byte for byte — on real media through the GPU integration tests, not only on synthetic fixtures.
 - Do not change expected test results to make a failing test pass.
 - Keep benchmark inputs and configurations consistent across revisions.

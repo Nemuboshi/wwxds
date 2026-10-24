@@ -23,7 +23,7 @@ jobs:
 
   # The detector's fidelity to the pinned WWXD decision core is checked, not
   # asserted: this job rebuilds the C oracle from the pinned reference and
-  # regenerates golden.json, then fails if the committed vectors differ. A clean
+  # regenerates reference.json, then fails if the committed vectors differ. A clean
   # diff proves the committed expectations equal the live pinned C (reference
   # commit a5870862), so the default cargo test can read them offline.
   #
@@ -32,8 +32,8 @@ jobs:
   # Linux-gcc match is itself a cross-platform fidelity signal. The oracle is a
   # separate cargo workspace, so this never builds the FFmpeg-linked crates and
   # never touches FFmpeg.
-  wwxd-golden-parity:
-    name: WWXD golden parity
+  wwxd-reference-parity:
+    name: WWXD reference parity
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -58,16 +58,16 @@ jobs:
           # Fail early with a clear message if the reference is not the pinned one.
           test "$(git -C target/wwxd-reference rev-parse HEAD)" = a5870862fd85138b5e4822a076377b96592c9cd2
 
-      - name: Regenerate the golden vectors from the reference
+      - name: Regenerate the reference vectors from the reference
         shell: bash
-        run: cargo run --manifest-path oracle/wwxd-golden/Cargo.toml
+        run: cargo run --manifest-path oracle/wwxd-reference/Cargo.toml
 
       - name: Verify the committed vectors match the reference
         shell: bash
         run: |
-          if ! git diff --exit-code -- tests/fixtures/detect/golden.json; then
-            echo "The committed golden.json differs from the pinned WWXD reference." >&2
+          if ! git diff --exit-code -- tests/fixtures/detect/reference.json; then
+            echo "The committed reference.json differs from the pinned WWXD reference." >&2
             echo "The port is not byte-exact, or a fixture changed without regeneration." >&2
-            git diff -- tests/fixtures/detect/golden.json >&2
+            git diff -- tests/fixtures/detect/reference.json >&2
             exit 1
           fi

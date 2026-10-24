@@ -6,7 +6,7 @@ The detection core (`crates/wwxds-core/src/detect/`) implements the pure-Rust sc
 
 - **Reference Source**: `vapoursynth-wwxd` at commit `a5870862fd85138b5e4822a076377b96592c9cd2`.
 - **Decision Core**: `detection.c` (`MEanalysis` and its internal static helpers).
-- **Harness and State Reference**: `wwxd.c` and the reference oracle in `oracle/wwxd-golden`.
+- **Harness and State Reference**: `wwxd.c` and the reference oracle in `oracle/wwxd-reference`.
 - **Fixed Constants**: `fcode = 4`, `edge_size = 64`, initial `intra_count = 1`.
 
 The detector reproduces WWXD's motion-compensated block SAD and spatial energy algorithm. It is not an implementation of the full Fraunhofer 2004 research paper. Adaptive thresholds, flash detection, and slow-motion stages from the paper do not exist in `detection.c` and are not included here.
@@ -181,12 +181,12 @@ pub struct Decision {
 
 ---
 
-## 9. Fidelity Proof and Golden Oracle Verification
+## 9. Fidelity Proof and Reference Oracle Verification
 
 Correctness is proved through automated oracle parity checks:
 
-- **Scope**: The golden vectors pin the *decision core* — the state machine over prepared 8-bit planes. They are independent of how those planes were produced: the analysis-plane filter lives upstream in `wwxds-media` (`docs/Architecture.md`, §4), and changing it requires corpus boundary-comparison evidence, not oracle regeneration.
-- **Reference Oracle**: `oracle/wwxd-golden` compiles the pinned reference C code and runs against committed fixtures in `tests/fixtures/detect/`.
-- **Golden Vectors**: The oracle generates `golden.json`, recording observable decisions, `shot_age`, and FNV-1a digests of macroblock predictors and padded reference regions.
-- **Automated Verification**: Regular tests check Rust output against `golden.json` without requiring a C compiler. Dedicated CI jobs recompile the reference C code on Linux and verify zero diff against `golden.json`.
+- **Scope**: The reference vectors pin the *decision core* — the state machine over prepared 8-bit planes. They are independent of how those planes were produced: the analysis-plane filter lives upstream in `wwxds-media` (`docs/Architecture.md`, §4), and changing it requires corpus boundary-comparison evidence, not oracle regeneration.
+- **Reference Oracle**: `oracle/wwxd-reference` compiles the pinned reference C code and runs against committed fixtures in `tests/fixtures/detect/`.
+- **Reference Vectors**: The oracle generates `reference.json`, recording observable decisions, `shot_age`, and FNV-1a digests of macroblock predictors and padded reference regions.
+- **Automated Verification**: Regular tests check Rust output against `reference.json` without requiring a C compiler. Dedicated CI jobs recompile the reference C code on Linux and verify zero diff against `reference.json`.
 - **Stock Quirks**: Known stock omissions in the original WWXD reference (e.g., frames 3064, 3447, and 361 on the reference clip) are deliberately preserved to guarantee bit-for-bit parity.

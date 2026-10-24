@@ -2,7 +2,7 @@
 *.bash text eol=lf
 
 # Detector fixtures. The parity digests are computed over exact bytes, so the
-# luma blobs must never be line-ending translated. The manifest and golden vectors
+# luma blobs must never be line-ending translated. The manifest and reference vectors
 # are compared with `git diff` after a regeneration, so they stay LF on every OS
 # even with core.autocrlf set.
 tests/fixtures/detect/*.bin binary

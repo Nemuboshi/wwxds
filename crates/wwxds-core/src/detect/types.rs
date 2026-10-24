@@ -117,11 +117,11 @@ impl Error for DetectError {}
 
 /// Which rule in the ported reference produced a decision.
 ///
-/// Each variant names the `detection.c` / `golden.c` return site it maps to.
+/// Each variant names the `detection.c` / `reference.c` return site it maps to.
 /// Reason values are diagnostics; the decision itself is the same boolean.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DecisionReason {
-    /// `golden.c:86`: the first frame returns a cut in the reference. The
+    /// `reference.c:86`: the first frame returns a cut in the reference. The
     /// production path reports the marker without turning it into a boundary.
     FirstFrame,
     /// `detection.c:454-455`: intra sub-block count exceeded the majority

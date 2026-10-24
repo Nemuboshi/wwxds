@@ -14,11 +14,11 @@ use super::types::{
     boundary_at, fnv_predictor, scores_unavailable,
 };
 
-/// `fcode` the reference harness always passes to `MEanalysis` (golden.c:87).
+/// `fcode` the reference harness always passes to `MEanalysis` (reference.c:87).
 const FCODE: i32 = 4;
 
 /// `MBParam.edged_height` mirror; the padded plane has `mb_height * 16 + 128`
-/// rows including the two 64-row borders (golden.c:50-56).
+/// rows including the two 64-row borders (reference.c:50-56).
 fn edged_height(mb_height: u32) -> u32 {
     mb_height * 16 + 128
 }
@@ -26,11 +26,11 @@ fn edged_height(mb_height: u32) -> u32 {
 /// A configured, ordered WWXD detector over frames of one fixed analysis size.
 pub struct Detector {
     geometry: Geometry,
-    /// Previous padded plane (`golden.c` `previous`).
+    /// Previous padded plane (`reference.c` `previous`).
     previous: Vec<u8>,
-    /// Current padded plane, overwritten each frame (`golden.c` `current`).
+    /// Current padded plane, overwritten each frame (`reference.c` `current`).
     current: Vec<u8>,
-    /// Reused macroblock predictors (`golden.c` `blocks`); never re-zeroed.
+    /// Reused macroblock predictors (`reference.c` `blocks`); never re-zeroed.
     mbs: Vec<MacroBlock>,
     /// Reused search scratch, zeroed once (see docs/WWXDDesign.md §5, §7).
     search: SearchData,
@@ -38,7 +38,7 @@ pub struct Detector {
     next_index: u64,
     /// Shot age, equal to the harness `intra_count` (minimum 1, saturating).
     shot_age: i32,
-    /// `golden.c` `first`: the first frame returns a marker without analysis.
+    /// `reference.c` `first`: the first frame returns a marker without analysis.
     first: bool,
     /// Set by [`Detector::finish`]; no further frames are accepted.
     finalized: bool,
@@ -75,7 +75,7 @@ impl Detector {
             inner_base,
         };
 
-        // Plane allocation identical to golden.c:57-61.
+        // Plane allocation identical to reference.c:57-61.
         let plane_len = edged_width
             * (usize::try_from(edged_height(mb_height)).expect("edged height fits usize") + 1)
             + 64;
@@ -149,7 +149,7 @@ impl Detector {
             });
         }
         // The last copied byte of the plane is `(height - 1) * stride + width`
-        // (golden.c copies `width` bytes per row, so it reads through the final
+        // (reference.c copies `width` bytes per row, so it reads through the final
         // row's width-1 column).
         let required = (frame.height as usize - 1)
             .checked_mul(frame.stride)
@@ -172,7 +172,7 @@ impl Detector {
         let prepare = prepare_start.elapsed();
 
         if self.first {
-            // golden.c:86: the first frame is a marker; MEanalysis is not run,
+            // reference.c:86: the first frame is a marker; MEanalysis is not run,
             // so no block diagnostics exist. The marker is not an output
             // boundary (frame 0 is never a boundary).
             let decision = Decision {
@@ -180,7 +180,7 @@ impl Detector {
                 reason: DecisionReason::FirstFrame,
                 scores: scores_unavailable(),
             };
-            self.shot_age = 1; // golden.c:89 cut -> intra_count = 1
+            self.shot_age = 1; // reference.c:89 cut -> intra_count = 1
             self.swap_planes();
             self.first = false;
             self.next_index = 1;
@@ -196,11 +196,11 @@ impl Detector {
         let analyze = analyze_start.elapsed();
         self.last_timings = DetectorTimings { prepare, analyze };
 
-        // golden.c:89-90: update shot age from the cut BEFORE the plane swap.
+        // reference.c:89-90: update shot age from the cut BEFORE the plane swap.
         if result.cut {
             self.shot_age = 1;
         } else {
-            // golden.c:90 caps at INT32_MAX, so a saturating add is exact.
+            // reference.c:90 caps at INT32_MAX, so a saturating add is exact.
             self.shot_age = self.shot_age.saturating_add(1);
         }
         self.swap_planes();
@@ -245,7 +245,7 @@ impl Detector {
         )
     }
 
-    /// Replicate `golden.c:78-85`: copy the input rows by stride, right-pad
+    /// Replicate `reference.c:78-85`: copy the input rows by stride, right-pad
     /// each to `mb_width * 16` with the last source pixel, and bottom-pad the
     /// remaining macroblock rows by repeating the last source row.
     fn pad(&mut self, frame: DetectorFrame<'_>) {
@@ -276,7 +276,7 @@ impl Detector {
         }
     }
 
-    /// Swap `previous` and `current` (golden.c:91-93).
+    /// Swap `previous` and `current` (reference.c:91-93).
     fn swap_planes(&mut self) {
         std::mem::swap(&mut self.previous, &mut self.current);
     }
@@ -529,7 +529,7 @@ mod tests {
     #[test]
     fn dimension_bounds_are_the_documented_range() {
         // 48..=4096 each, area at most 2_097_152 — the same range the reference
-        // harness validates (golden.c:46-47).
+        // harness validates (reference.c:46-47).
         assert!(Detector::new(48, 48).is_ok());
         assert!(Detector::new(4096, 512).is_ok(), "exact area cap accepted");
         assert!(matches!(

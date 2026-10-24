@@ -50,7 +50,7 @@ single-threaded decoder saturates. Boundary lists identical.
 ### 4.3 SSE2 `sad16`/`dev16` kernels (`wwxds-core`)
 `PSADBW` row kernels with portable fallbacks. 120-frame replay, 5 interleaved
 rounds: `sad16` 35.1 ms → 22.3 ms per replay, then `dev16` 22.3 ms → 18.7 ms.
-Detector throughput 3,429 → 6,402 FPS. Golden parity and boundary lists
+Detector throughput 3,429 → 6,402 FPS. Reference parity and boundary lists
 unchanged.
 
 ### 4.4 Integer box analysis filter; swscale removal (`wwxds-media`)
@@ -90,7 +90,7 @@ CUDA zero-copy path; integrated GPUs are covered by the same backend.
 
 | Candidate | Outcome | Reason |
 | :--- | :--- | :--- |
-| Direct gray8 swscale output | ~6% of luma bytes differ | Breaks golden-vector parity. |
+| Direct gray8 swscale output | ~6% of luma bytes differ | Breaks reference-vector parity. |
 | Standalone d3d11va decode (pre-backend trial) | 7.4 s vs 8.0 s wall | Memory use and copy overhead; superseded by the §4.5 backend, which never brings full frames to the host. |
 | Parallel macroblock search | Not evaluated | Motion predictors and early exits require strict serial order. |
 | Bit-reduction rewrite (`chunks_exact`) | 0.1091 ms vs 0.1091 ms | Within measurement noise. |
@@ -100,7 +100,7 @@ CUDA zero-copy path; integrated GPUs are covered by the same backend.
 1. Never sum producer and consumer stages into a total.
 2. High CPU utilization is not evidence of a speedup.
 3. Record regressions next to gains.
-4. The golden vectors of `docs/WWXDDesign.md` §9 are never regenerated to make
+4. The reference vectors of `docs/WWXDDesign.md` §9 are never regenerated to make
    an optimization pass.
 5. An analysis-plane change must ship a corpus boundary comparison recorded
    here, plus regenerated fixtures and digest lists.

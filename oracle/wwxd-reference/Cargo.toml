@@ -1,12 +1,12 @@
 [package]
-name = "wwxd-golden"
+name = "wwxd-reference"
 version = "0.1.0"
 edition = "2024"
 publish = false
 
 # Standalone workspace: `cargo build` at the repository root does not see this
 # crate, so the 59-test offline baseline never compiles a C dependency. It is a
-# development-only tool that regenerates tests/fixtures/detect/golden.json from
+# development-only tool that regenerates tests/fixtures/detect/reference.json from
 # the pinned reference; CI invokes it and asserts the committed file matches.
 
 [workspace]
