@@ -10,9 +10,10 @@
 //! means the filter or the resize path changed the analysis bytes — a review
 //! event, not a routine update.
 //!
-//! The cases cover upsampling, downsampling, odd sizes, constant planes,
-//! identity geometry, and 10-bit in both endiannesses, over padded source
-//! strides. It needs no FFmpeg, so it runs in CI on every checkout.
+//! The cases cover identity geometry, whole-pixel downscales (square and
+//! per-axis blocks), odd result dimensions, constant planes, and 10-bit in
+//! both endiannesses, over padded source strides. It needs no FFmpeg, so it
+//! runs in CI on every checkout.
 
 use std::fs;
 use std::path::PathBuf;

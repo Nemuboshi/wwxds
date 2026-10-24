@@ -114,12 +114,9 @@ fn a_ten_bit_input_reports_the_same_boundary() {
 
 #[test]
 fn odd_and_minimum_dimensions_run_the_complete_path() {
-    // 97x65 source (odd) and the 48x48 minimum: both scale into the documented
-    // analysis bounds and carry the change at frame 3.
-    for (name, analysis) in [
-        ("odd-97x65.mkv", (536, 360)),
-        ("small-48x48.mkv", (360, 360)),
-    ] {
+    // 97x65 source (odd) and the 48x48 minimum: both are analyzed natively
+    // under the integer scale rule, and both carry the change at frame 3.
+    for (name, analysis) in [("odd-97x65.mkv", (97, 65)), ("small-48x48.mkv", (48, 48))] {
         let Some((indexes, summary)) = boundaries(name) else {
             return;
         };

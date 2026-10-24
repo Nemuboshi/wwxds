@@ -145,11 +145,13 @@ fn b_frame_input_arrives_in_display_order() {
 
 #[test]
 fn analysis_size_follows_the_documented_rule() {
+    // Every fixture is at or below the 360 target height, so all of them are
+    // analyzed natively under the integer scale rule.
     let cases = [
-        ("cut8.mkv", 540, 360),
-        ("odd-97x65.mkv", 536, 360),
-        ("small-48x48.mkv", 360, 360),
-        ("vfr.mp4", 480, 360),
+        ("cut8.mkv", 96, 64),
+        ("odd-97x65.mkv", 97, 65),
+        ("small-48x48.mkv", 48, 48),
+        ("vfr.mp4", 64, 48),
     ];
 
     for (name, width, height) in cases {

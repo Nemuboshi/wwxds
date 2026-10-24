@@ -119,12 +119,11 @@ fn identity_geometry_reduces_10_bit_samples_by_two_bits() {
 #[test]
 fn constant_planes_scale_to_the_same_constant() {
     // A constant plane must survive the filter unchanged, in both directions:
-    // the weights of one output pixel sum to the source area it covers, so
-    // the rounded mean of a constant is that constant. A mis-normalized
-    // weight row breaks this first.
+    // the block mean of a constant is that constant, so a mis-dividing block
+    // breaks this first.
     for (value, label) in [(0u8, "zero"), (255u8, "maximum")] {
         let (plane, stride) = plane8(96, 64, 64, |_, _| value);
-        for (dst_w, dst_h) in [(160usize, 90usize), (48usize, 32usize)] {
+        for (dst_w, dst_h) in [(48usize, 32usize), (32usize, 16usize)] {
             let mut resizer =
                 FrameResizer::open(96, 64, LumaFormat::Gray8, dst_w as u32, dst_h as u32)
                     .expect("a supported geometry");
@@ -142,8 +141,8 @@ fn constant_planes_scale_to_the_same_constant() {
 
     let (plane, stride) = plane10(96, 64, LumaFormat::Gray10Be, |_, _| 0x3FF);
     let mut resizer =
-        FrameResizer::open(96, 64, LumaFormat::Gray10Be, 160, 90).expect("a supported geometry");
-    let mut out = vec![0u8; 160 * 90];
+        FrameResizer::open(96, 64, LumaFormat::Gray10Be, 48, 32).expect("a supported geometry");
+    let mut out = vec![0u8; 48 * 32];
     resizer
         .resize(&plane, stride, &mut out)
         .expect("the plane resizes");
@@ -158,8 +157,8 @@ fn a_short_destination_is_rejected_before_any_write() {
     // The resizer must check the caller's buffer instead of writing past its
     // end.
     let (plane, stride) = plane8(96, 64, 0, |_, _| 32);
-    let mut resizer = FrameResizer::open(96, 64, LumaFormat::Gray8, 160, 90).expect("opens");
-    let mut out = vec![0u8; 160 * 90 - 1];
+    let mut resizer = FrameResizer::open(96, 64, LumaFormat::Gray8, 48, 32).expect("opens");
+    let mut out = vec![0u8; 48 * 32 - 1];
     let error = resizer
         .resize(&plane, stride, &mut out)
         .expect_err("a short destination must be rejected");

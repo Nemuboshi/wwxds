@@ -83,8 +83,34 @@ CUDA zero-copy path; integrated GPUs are covered by the same backend.
   On the reference machine the consumer stages and ambient noise dominate the
   wall clock, so the stage-level win does not yet change end-to-end time
   there; the removed filter contention is what scales on slower machines.
-- Limitations: whole-pixel downscales only; other geometries fall back to the
-  CPU filter with a note on standard error. Requires Direct3D 11.3.
+- Limitations: the shader covers every geometry the analysis-size derivation
+  produces (§4.6); only a missing device or decoder capability falls back to
+  the CPU filter. Requires Direct3D 11.3.
+
+### 4.6 Integer-scale analysis sizes; fractional geometries removed
+- **Change**: the analysis size is now the source divided by the smallest
+  integer factor that brings the height to the target (360) or below; a
+  source the factor cannot reach is analyzed natively, never upscaled or
+  fractionally scaled (`docs/Architecture.md` §4). The filter's fractional
+  coverage path — weight tables, 64-bit accumulators, a general vertical
+  pass — is deleted, and the D3D11 shader now covers every geometry a run
+  can have.
+- **Motivation**: scaling is a speed heuristic, not a fidelity requirement.
+  Whole-pixel-only scaling keeps the two backends on one arithmetic and
+  removes half the filter code.
+- **Behavior changes**: non-standard sources change analysis size — 720x576:
+  452x360 → 360x288; 960x432: 800x360 → 480x216; 3840x2160: 640x360 →
+  512x270 (the native area exceeds the pixel cap). Sources already at or
+  below the 360 target — the whole m1 corpus — are analyzed natively instead
+  of upscaled.
+- **Parity evidence**: the committed analysis digests were regenerated
+  through `examples/digest` (the corpus now digests at native sizes); the
+  native digests are unchanged except `odd-97x65`, whose old "native" row
+  was a fractional 97→96 width scale and whose new row is the true native
+  plane. Every synthetic cut stays at its recipe frame (6 for the 96x64
+  clips, 3 for the odd and minimum sizes), and the GPU/CPU byte parity tests
+  pass on real media. The resize fixtures were rebuilt around whole-pixel
+  geometries through the committed generator.
 
 ## 5. Rejected or Superseded Approaches
 

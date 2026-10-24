@@ -79,16 +79,12 @@ wwxds-media ───────────┘ (depends on wwxds-core)
 The analysis plane is produced by the project's own integer box (area-average) filter. It replaced the former swscale bicubic path, whose cost dominated the producer; the filter is defined so that every backend — CPU scalar/SIMD, CUDA, and compute shaders — computes byte-identical output.
 
 - **Target Geometry**:
-  - The default analysis height is 360 pixels.
-  - The analysis width is calculated from the source aspect ratio:
-    $$\text{width} = 4 \times \operatorname{round}\left(\frac{\text{source\_width} \times \text{height}}{4 \times \text{source\_height}}\right)$$
-  - Dimensions must stay within 48 to 4096 pixels. Total frame area must not exceed 2,097,152 pixels.
-- **Filter Definition**: One output sample is the area average of the source samples its unit square covers.
-  - Output column $i$ covers the source interval $[i \cdot W / w,\ (i+1) \cdot W / w)$ in source-pixel units, where $W$ is the source width and $w$ the analysis width; rows are the same along $H$ and $h$.
-  - Weights are exact integers: multiply both intervals by $w$ (respectively $h$), and the overlap of source pixel $x$ with output column $i$ is $\max(0, \min((i+1)W, (x+1)w) - \max(iW, xw))$ — an integer number of $1/w$ units.
-  - The accumulator $\text{acc} = \sum \text{sample}(x, y) \cdot \text{weight}_x \cdot \text{weight}_y$ is exact in unsigned 64-bit integers for every accepted geometry. The per-axis integer weights of one output pixel sum to $W$ (horizontal) and $H$ (vertical), so the accumulator's denominator is the source area one output pixel covers, $W \cdot H$ — the same value for downscaling, identity, and upsampling.
-  - The result is $\lfloor (\text{acc} + \lfloor W \cdot H / 2 \rfloor) / (W \cdot H) \rfloor$: a rounded integer mean in the source bit depth. 10-bit sources are reduced to 8 bits afterwards by `>> 2` of the rounded mean; 8-bit sources are used directly. No floating-point arithmetic participates anywhere.
-  - When $w > W$ (upsampling) the horizontal weights degenerate to a single source pixel of weight $W$ per output column (nearest-neighbour sampling); the arithmetic is unchanged.
+  - The target analysis height is 360 pixels; `--analysis-height` overrides the target.
+  - The scale factor k is the smallest integer that divides both source dimensions and brings the height to the target or below; the analysis size is the source divided by k. A source already at or below the target height is analyzed natively (k = 1), and a source no divisor reaches the target with (for example 1366x768) is analyzed natively too. The analysis plane is never larger than the source and never fractional, so every geometry is an exact whole-pixel block map — the shape the CPU filter and the D3D11 shader both compute.
+  - Scaled dimensions must stay within 48 to 4096 pixels and the area within 2,097,152 pixels; a source no factor satisfies this is rejected.
+- **Filter Definition**: One output sample is the rounded integer mean of the sx * sy whole source samples its block covers, where sx = W / w and sy = H / h.
+  - The block sum `acc = sum sample(x, y)` is exact in unsigned 32-bit integers; sx * sy < 4096 is a precondition of the exact division below, and a larger block is rejected at filter construction.
+  - The result is `(acc + (sx*sy)/2) / (sx*sy)`, rounded down: a rounded integer mean in the source bit depth. 10-bit sources are reduced to 8 bits afterwards by `>> 2` of the rounded mean; 8-bit sources are used directly. No floating-point arithmetic participates anywhere.
 - **Strides**: Source planes are read under their actual strides. The analysis plane handed to the detector is tight ($w$ bytes per row).
 - **Backend Parity**: The CPU implementation is the reference. A GPU backend must produce byte-identical planes on the committed fixtures; cross-backend agreement is tested, not assumed.
 - **No Intermediates**: There is no 16-bit intermediate plane and no secondary reduction pass; the box sum produces the 8-bit sample in one operation.
@@ -147,7 +143,7 @@ All interactions with FFmpeg structures stay in `crates/wwxds-media/csrc/wwxds_f
 GPU acceleration runs inside `wwxds-media`; the CPU path is always built and is the fallback. The selected backend never changes the output bytes.
 
 - **Backend**: D3D11. Hardware decoding (d3d11va) keeps every decoded frame in GPU memory as an NV12 or P010 texture; a compute shader in the C shim computes the whole-pixel box filter of §4 on the device; only the tight 8-bit analysis plane — a few hundred kilobytes per frame — is copied back to the host for the detector. There is no full-size frame round trip.
-- **Geometry coverage**: the shader covers whole-pixel downscales, which every default analysis size is (1080p sources map 3:1). Any other geometry, a missing Direct3D 11.3 device, or a decoder without d3d11va falls back to the CPU filter with the reason on standard error under `--gpu auto`.
+- **Geometry coverage**: the analysis-size derivation of §4 only produces whole-pixel block maps, so the shader covers every geometry a run can have. Only a missing Direct3D 11.3 device or a decoder without d3d11va falls back to the CPU filter with the reason on standard error under `--gpu auto`.
 - **Selection**: `--gpu auto|d3d11|off`, with `auto` as the default. `auto` probes D3D11 and degrades silently with a note on standard error; `d3d11` fails the run when the backend is unavailable; `off` never touches the device. The `--stats` line reports the settled backend.
 - **Parity**: hardware decode output and shader output are pinned byte-for-byte against the CPU pipeline by the GPU integration tests (`crates/wwxds-media/tests/gpu.rs`, `tests/gpu.rs`); results never depend on the selected backend.
 - **Placement**: all Direct3D and COM access lives in `csrc/wwxds_ffmpeg.c`, including the compute shader source, which is compiled at run start with the system `d3dcompiler_47`. `wwxds-core` stays device-agnostic; the root CLI only parses the flag.

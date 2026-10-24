@@ -20,7 +20,9 @@ pub(crate) struct Cli {
     #[arg(long, value_name = "INDEX")]
     pub(crate) stream_index: Option<u32>,
 
-    /// Analysis height in pixels. Width follows the source aspect ratio.
+    /// Target analysis height in pixels. The source is divided by the
+    /// smallest integer factor that reaches it; a source no factor reaches
+    /// is analyzed natively.
     #[arg(long, value_name = "PIXELS")]
     pub(crate) analysis_height: Option<u32>,
 

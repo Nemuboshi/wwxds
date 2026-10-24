@@ -7,11 +7,11 @@
 //! Only the tight 8-bit analysis plane — a few hundred kilobytes per frame —
 //! crosses back to the host, so no full-size frame round trip exists.
 //!
-//! The backend covers whole-pixel downscales only. Every default analysis
-//! size is one (1080p sources map 3:1); any other geometry is rejected here
-//! and the caller falls back to the CPU filter. Hardware decode output is
-//! byte-compared against the CPU pipeline in the integration tests, which is
-//! what makes the two backends interchangeable.
+//! The analysis-size derivation only produces whole-pixel block maps, so the
+//! shader covers every geometry the derivation can produce; nothing is
+//! declined for its shape. The integration tests byte-compare the hardware
+//! output against the CPU pipeline, which is what makes the two backends
+//! interchangeable.
 //!
 //! All Direct3D access lives in `csrc/wwxds_ffmpeg.c`; this module holds the
 //! selection mode and the filter parameters.
@@ -73,10 +73,10 @@ pub(crate) struct D3d11Filter {
 impl D3d11Filter {
     /// Plans a GPU filter for one source and analysis geometry.
     ///
-    /// The GPU path only exists for whole-pixel downscales — the shape every
-    /// default analysis size has — because that is where the shader and the
-    /// CPU fast path compute the same exact block means. Any other geometry
-    /// returns a reason the caller reports with its fallback.
+    /// The derivation only produces whole-pixel block maps, so any geometry
+    /// it hands over is accepted. The checks below are defensive: they turn
+    /// a mis-derivation into a reported error instead of an out-of-bounds
+    /// shader read.
     pub fn plan(
         source_width: u32,
         source_height: u32,
@@ -181,13 +181,14 @@ mod tests {
     }
 
     #[test]
-    fn upsampling_and_fractional_scales_are_rejected() {
-        // The m1 corpus sources upscale to the analysis height, so the GPU
-        // path must refuse them rather than compute a different filter.
+    fn upsampling_and_fractional_scales_are_still_refused_defensively() {
+        // The derivation cannot produce these, so the refusal is a guard
+        // against a mis-derivation, not a user-facing scope limit.
         assert!(D3d11Filter::plan(96, 64, 540, 360).is_err());
-        // 960x432 maps to 800x360 at the default height: 1.2x, fractional.
         assert!(D3d11Filter::plan(960, 432, 800, 360).is_err());
         // Identity is a valid whole-pixel map.
         assert!(D3d11Filter::plan(640, 360, 640, 360).is_ok());
+        // An odd-dimensioned native analysis plane is a 1x1 block map.
+        assert!(D3d11Filter::plan(97, 65, 97, 65).is_ok());
     }
 }

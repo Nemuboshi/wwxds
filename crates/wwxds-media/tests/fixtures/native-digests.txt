@@ -92,12 +92,12 @@
 3 dadd0fb7fb661325
 4 dadd0fb7fb661325
 # end frames=5
-# input=odd-97x65.mkv stream=0 source=97x65 pix_fmt=yuv420p analysis=96x65
-0 763db7564383e2a5
-1 763db7564383e2a5
-2 763db7564383e2a5
-3 50556177dd381ea5
-4 50556177dd381ea5
+# input=odd-97x65.mkv stream=0 source=97x65 pix_fmt=yuv420p analysis=97x65
+0 59cbafd4b673e497
+1 59cbafd4b673e497
+2 59cbafd4b673e497
+3 9087b650afe96237
+4 9087b650afe96237
 # end frames=5
 # input=small-48x48.mkv stream=0 source=48x48 pix_fmt=yuv420p analysis=48x48
 0 56c415d20bc01725

@@ -18,10 +18,9 @@
 //! cannot look like a valid one.
 //!
 //! `--native` sets the analysis height to the source height. That is not a
-//! special decoder mode: swscale then takes its unscaled copy branch, which
-//! promotes each sample and reduces it again (`v * 257 >> 8 == v` for 8-bit,
-//! `((v << 6) | (v >> 4)) >> 8` for 10-bit), so the plane is the decoded luma
-//! and the digest isolates decoding from the filtered path.
+//! special decoder mode: the scale factor is then 1, so the filter's block
+//! is one sample and the plane is the decoded luma reduced by the (zero)
+//! shift, and the digest isolates decoding from the filtered path.
 //!
 //! Run with a release build:
 //!

@@ -63,7 +63,7 @@
 - GPU acceleration is an optional backend inside `wwxds-media` behind a documented selection flag (`--gpu`); the CPU path is always present and is the fallback.
 - The backend is D3D11: d3d11va hardware decode keeps frames in GPU memory, and a compute shader in the C shim produces the analysis plane. Only the tight analysis plane crosses back to the host.
 - All Direct3D and COM access stays in `crates/wwxds-media/csrc/`. No Rust file may include a Direct3D header or name a Direct3D type; hand-written `extern "C"` declarations are the contract.
-- A GPU backend must reproduce the CPU analysis planes and boundary lists byte for byte on real media, which the GPU integration tests pin; it covers whole-pixel downscale geometries and falls back to the CPU filter for anything else, with the reason on standard error.
+- A GPU backend must reproduce the CPU analysis planes and boundary lists byte for byte on real media, which the GPU integration tests pin. The analysis-size rule (integer division only, `docs/Architecture.md` §4) keeps every geometry a whole-pixel block map, so both backends run the same arithmetic on every input.
 - Backend selection and fallback are explicit: `auto` probes D3D11 and degrades silently with a note, `d3d11` fails the run when unavailable, `off` never touches the device.
 - CUDA and Vulkan paths are future work that requires a rebuilt FFmpeg asset with NVDEC; do not add them without that dependency decision.
 
