@@ -1,9 +1,9 @@
 //! The complete video processing path, reader to detector.
 //!
-//! These tests run `ihni::detect_video` over the decode fixtures, so the
+//! These tests run `wwxds::detect_video` over the decode fixtures, so the
 //! borrowed prepared frames, the display-order contract, and the ordered
 //! detector state are exercised together on real decoded media rather than on
-//! the saved byte blocks of `crates/ihni-core/tests/detect.rs`. The expected boundary indexes
+//! the saved byte blocks of `crates/wwxds-core/tests/detect.rs`. The expected boundary indexes
 //! are the `change_frame` values in `scripts/make-m1-fixtures.sh`. They are
 //! known by construction: the script verifies each clip's luma mean before and
 //! at that frame before writing it.
@@ -15,11 +15,11 @@
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 
-use ihni::error::AppError;
-use ihni::frame_index::BoundaryFrameIndex;
-use ihni::progress::Progress;
-use ihni::{RunOptions, detect_video, detect_video_with_progress};
-use ihni_media::MediaError;
+use wwxds::error::AppError;
+use wwxds::frame_index::BoundaryFrameIndex;
+use wwxds::progress::Progress;
+use wwxds::{RunOptions, detect_video, detect_video_with_progress};
+use wwxds_media::MediaError;
 
 fn fixture(name: &str) -> Option<PathBuf> {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -38,7 +38,7 @@ fn fixture(name: &str) -> Option<PathBuf> {
 
 /// Runs the full path once and returns the boundary indexes with the summary,
 /// asserting the frame index contract on every run.
-fn boundaries(name: &str) -> Option<(Vec<u64>, ihni::DetectSummary)> {
+fn boundaries(name: &str) -> Option<(Vec<u64>, wwxds::DetectSummary)> {
     let path = fixture(name)?;
     let summary = detect_video(&path, RunOptions::default())
         .unwrap_or_else(|error| panic!("{name}: the complete path failed: {error}"));
@@ -228,7 +228,7 @@ fn the_keyframe_file_adds_only_frame_zero() {
         let temporary = tempfile::tempdir()
             .unwrap_or_else(|error| panic!("{name}: no temporary directory: {error}"));
         let output = temporary.path().join(format!("{name}.kf.txt"));
-        ihni::keyframes::write_kf_file(&output, &summary)
+        wwxds::keyframes::write_kf_file(&output, &summary)
             .unwrap_or_else(|error| panic!("{name}: the keyframe file failed: {error}"));
 
         let text = std::fs::read_to_string(&output)
@@ -281,7 +281,7 @@ impl ProgressLog {
     /// `returned` is set the moment `detect_video_with_progress` comes back,
     /// so any callback that fires after the run returned — a leaked thread or
     /// a late flush — is recorded and failed instead of silently accepted.
-    fn run(&self, path: &Path) -> Result<ihni::DetectSummary, AppError> {
+    fn run(&self, path: &Path) -> Result<wwxds::DetectSummary, AppError> {
         let result = detect_video_with_progress(path, RunOptions::default(), |progress| {
             if self.returned.get() {
                 self.callback_after_return.set(true);

@@ -11,8 +11,8 @@
 
 use std::time::Instant;
 
-use ihni_media::LumaFormat;
-use ihni_media::decode::FrameResizer;
+use wwxds_media::LumaFormat;
+use wwxds_media::decode::FrameResizer;
 
 /// One geometry timed over a synthetic plane.
 struct Case {

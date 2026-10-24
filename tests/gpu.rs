@@ -9,7 +9,7 @@
 
 use std::path::PathBuf;
 
-use ihni::{RunOptions, detect_video};
+use wwxds::{RunOptions, detect_video};
 
 fn bench_clip() -> Option<PathBuf> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/bench-1080p.mkv");
@@ -26,7 +26,7 @@ fn the_gpu_backend_reports_the_same_boundaries_as_the_cpu_path() {
     let cpu = detect_video(
         &path,
         RunOptions {
-            gpu: ihni::decode::GpuMode::Off,
+            gpu: wwxds::decode::GpuMode::Off,
             ..RunOptions::default()
         },
     )
@@ -35,7 +35,7 @@ fn the_gpu_backend_reports_the_same_boundaries_as_the_cpu_path() {
     let gpu = detect_video(
         &path,
         RunOptions {
-            gpu: ihni::decode::GpuMode::Auto,
+            gpu: wwxds::decode::GpuMode::Auto,
             ..RunOptions::default()
         },
     )

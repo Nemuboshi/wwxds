@@ -18,7 +18,7 @@
 
 set -uo pipefail
 
-binary=${1:-target/release/ihni.exe}
+binary=${1:-target/release/wwxds.exe}
 
 if [ ! -f "$binary" ]; then
     echo "check-link-gate: no such file: $binary" >&2

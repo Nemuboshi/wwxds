@@ -1,6 +1,6 @@
 name: FFmpeg Static Libraries
 
-# Builds the static FFmpeg development prefix that ihni links, and publishes it
+# Builds the static FFmpeg development prefix that wwxds links, and publishes it
 # as a release asset under the reserved `ffmpeg-libs-*` tag prefix. Existing
 # assets are reused rather than rebuilt: a version is built once.
 #
@@ -102,7 +102,7 @@ jobs:
           name: 'FFmpeg static libraries ${{ inputs.version }}'
           prerelease: true
           body: |
-            Static FFmpeg development prefix for building ihni.
+            Static FFmpeg development prefix for building wwxds.
 
             Built by the `FFmpeg Static Libraries` workflow from the vcpkg port.
             Contents: `include/`, `lib/` and `PACKAGES.txt`.

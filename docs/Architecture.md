@@ -2,7 +2,7 @@
 
 ## 1. Overview and Data Pipeline
 
-IHNI detects scene hard-cuts and outputs keyframe lists for video files. The processing pipeline runs in one linear direction:
+WWXDS detects scene hard-cuts and outputs keyframe lists for video files. The processing pipeline runs in one linear direction:
 
 ```text
 Video File
@@ -17,7 +17,7 @@ Analysis Plane (integer box filter)
 Bounded Channel (Producer-Consumer Queue)
     │  (bounded read-ahead slots)
     ▼
-Scene Detection (ihni-core)
+Scene Detection (wwxds-core)
     │  (WWXD algorithm state machine)
     ▼
 Atomic File Publisher
@@ -37,26 +37,26 @@ Standard Error Progress Output
 The workspace separates responsibilities into three isolated crates with strict one-way dependencies:
 
 ```text
-ihni (CLI root binary)
-  ├── depends on ──► ihni-media
-  └── depends on ──► ihni-core
+wwxds (CLI root binary)
+  ├── depends on ──► wwxds-media
+  └── depends on ──► wwxds-core
                       ▲
-ihni-media ───────────┘ (depends on ihni-core)
+wwxds-media ───────────┘ (depends on wwxds-core)
 ```
 
-### `ihni-core`
+### `wwxds-core`
 - Implements the pure WWXD detection algorithm and state machine.
 - Has zero external dependencies.
 - Has no knowledge of video containers, FFmpeg, file I/O, or command-line interfaces.
 - Consumes only prepared 8-bit analysis frames and frame sequence metadata.
 
-### `ihni-media`
+### `wwxds-media`
 - Handles video file probing, packet demuxing, video decoding, and frame scaling.
 - Encapsulates FFmpeg libraries through an internal C shim.
 - Provides a bounded producer-consumer channel for display-order frames.
-- Depends only on `ihni-core`. It never depends on the root CLI package.
+- Depends only on `wwxds-core`. It never depends on the root CLI package.
 
-### Root Package (`ihni`)
+### Root Package (`wwxds`)
 - Parses CLI arguments with `clap`.
 - Renders throttled progress updates and optional `RunStats` summaries to `stderr`.
 - Writes keyframe lists atomically to disk through `tempfile`.
@@ -97,12 +97,12 @@ The analysis plane is produced by the project's own integer box (area-average) f
 
 ## 5. FFI and C Shim Memory Model
 
-All interactions with FFmpeg structures stay in `crates/ihni-media/csrc/ihni_ffmpeg.c`:
+All interactions with FFmpeg structures stay in `crates/wwxds-media/csrc/wwxds_ffmpeg.c`:
 
 - **Encapsulation**:
   - Rust code never includes libav headers, names libav struct types, or assumes struct layouts.
   - `bindgen` and `libclang` are prohibited.
-  - Rust uses hand-written `extern "C"` declarations with opaque pointers in `crates/ihni-media/src/ffi.rs`.
+  - Rust uses hand-written `extern "C"` declarations with opaque pointers in `crates/wwxds-media/src/ffi.rs`.
 - **Safety Invariants**:
   - Every `unsafe` block must include a `SAFETY` comment that explains soundness.
   - Compiler flags deny `unsafe_op_in_unsafe_fn` and undocumented unsafe blocks.
@@ -144,11 +144,11 @@ All interactions with FFmpeg structures stay in `crates/ihni-media/csrc/ihni_ffm
 
 ## 8. GPU Backends
 
-GPU acceleration runs inside `ihni-media`; the CPU path is always built and is the fallback. The selected backend never changes the output bytes.
+GPU acceleration runs inside `wwxds-media`; the CPU path is always built and is the fallback. The selected backend never changes the output bytes.
 
 - **Backend**: D3D11. Hardware decoding (d3d11va) keeps every decoded frame in GPU memory as an NV12 or P010 texture; a compute shader in the C shim computes the whole-pixel box filter of §4 on the device; only the tight 8-bit analysis plane — a few hundred kilobytes per frame — is copied back to the host for the detector. There is no full-size frame round trip.
 - **Geometry coverage**: the shader covers whole-pixel downscales, which every default analysis size is (1080p sources map 3:1). Any other geometry, a missing Direct3D 11.3 device, or a decoder without d3d11va falls back to the CPU filter with the reason on standard error under `--gpu auto`.
 - **Selection**: `--gpu auto|d3d11|off`, with `auto` as the default. `auto` probes D3D11 and degrades silently with a note on standard error; `d3d11` fails the run when the backend is unavailable; `off` never touches the device. The `--stats` line reports the settled backend.
-- **Parity**: hardware decode output and shader output are pinned byte-for-byte against the CPU pipeline by the GPU integration tests (`crates/ihni-media/tests/gpu.rs`, `tests/gpu.rs`); results never depend on the selected backend.
-- **Placement**: all Direct3D and COM access lives in `csrc/ihni_ffmpeg.c`, including the compute shader source, which is compiled at run start with the system `d3dcompiler_47`. `ihni-core` stays device-agnostic; the root CLI only parses the flag.
+- **Parity**: hardware decode output and shader output are pinned byte-for-byte against the CPU pipeline by the GPU integration tests (`crates/wwxds-media/tests/gpu.rs`, `tests/gpu.rs`); results never depend on the selected backend.
+- **Placement**: all Direct3D and COM access lives in `csrc/wwxds_ffmpeg.c`, including the compute shader source, which is compiled at run start with the system `d3dcompiler_47`. `wwxds-core` stays device-agnostic; the root CLI only parses the flag.
 - **History and alternatives**: the original plan used CUDA with NVDEC, but the pinned FFmpeg build disables NVDEC and Vulkan, so the zero-copy design was re-based on the d3d11va support it ships with. CUDA becomes possible only with a rebuilt FFmpeg asset; a Vulkan path would add a dependency for the same coverage the D3D11 backend already provides on every vendor, integrated GPUs included (shared memory, no PCIe copy).

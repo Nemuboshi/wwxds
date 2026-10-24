@@ -1,7 +1,7 @@
 //! The honest timing summary.
 //!
 //! `RunStats` must separate the producer's real decode and resize cost (paid
-//! on the producer thread inside `ihni-media`) from the consumer's wait for
+//! on the producer thread inside `wwxds-media`) from the consumer's wait for
 //! prepared frames. Before this split, `decode` named the consumer wait and the
 //! producer's actual cost was invisible; a reader could take the wait for the
 //! whole cost of decoding. These tests pin the split on real media: a complete
@@ -16,7 +16,7 @@
 
 use std::path::{Path, PathBuf};
 
-use ihni::{RunOptions, detect_video};
+use wwxds::{RunOptions, detect_video};
 
 fn fixture(name: &str) -> Option<PathBuf> {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))

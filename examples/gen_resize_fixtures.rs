@@ -9,7 +9,7 @@
 //!
 //! ```text
 //! cargo run --release --example gen_resize_fixtures
-//! git diff -- crates/ihni-media/tests/fixtures/resize
+//! git diff -- crates/wwxds-media/tests/fixtures/resize
 //! ```
 //!
 //! The `.in` source planes are frozen inputs and are never rewritten.
@@ -17,8 +17,8 @@
 use std::fs;
 use std::path::PathBuf;
 
-use ihni_media::LumaFormat;
-use ihni_media::decode::FrameResizer;
+use wwxds_media::LumaFormat;
+use wwxds_media::decode::FrameResizer;
 
 struct Case {
     name: String,
@@ -35,7 +35,7 @@ fn fixture_directory() -> PathBuf {
     // the manifest instead of relative to this file.
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("crates")
-        .join("ihni-media")
+        .join("wwxds-media")
         .join("tests")
         .join("fixtures")
         .join("resize")

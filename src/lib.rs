@@ -1,8 +1,8 @@
-//! IHNI: a standalone Rust hard-cut detector based on WWXD.
+//! WWXDS: a standalone Rust hard-cut detector based on WWXD.
 //!
-//! The workspace keeps three concerns apart. `ihni-core` is the detector alone:
+//! The workspace keeps three concerns apart. `wwxds-core` is the detector alone:
 //! ordered state over prepared frames, with no decoder, FFmpeg, or CLI
-//! dependency. `ihni-media` owns every media file operation. This crate is the
+//! dependency. `wwxds-media` owns every media file operation. This crate is the
 //! pipeline that joins them, and [`detect_video`] is the only place the two
 //! meet. It depends on neither a CLI type nor a JSON serializer.
 //!
@@ -10,8 +10,8 @@
 //! [`detect`], [`decode`], and [`frame_index`] resolve here exactly as they did
 //! before the split.
 
-pub use ihni_core::{detect, frame_index};
-pub use ihni_media::decode;
+pub use wwxds_core::{detect, frame_index};
+pub use wwxds_media::decode;
 
 pub mod error;
 pub mod keyframes;
@@ -68,7 +68,7 @@ impl Default for RunOptions {
 
 /// Wall time of one run, split by stage.
 ///
-/// The producer thread (inside `ihni-media`) runs the decoder and the resize;
+/// The producer thread (inside `wwxds-media`) runs the decoder and the resize;
 /// `producer_decode` and `producer_resize` are its own measured cost. The
 /// consumer waits for prepared frames; `queue_wait` is that wait and is *not*
 /// the cost of decoding — the wait and the producer stages overlap, so they
@@ -93,9 +93,7 @@ pub struct RunStats {
     pub prepare: Duration,
     /// Time spent in the block decision.
     pub detect: Duration,
-    /// Total wall time of the run.
     pub total: Duration,
-    /// Frames the decoder produced ahead of the detector.
     pub read_ahead: usize,
     /// The analysis-plane backend the run settled on: `"cpu"` or `"d3d11"`.
     pub backend: &'static str,

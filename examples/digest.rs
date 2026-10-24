@@ -33,7 +33,7 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use ihni::decode::{FrameStream, ReaderOptions};
+use wwxds::decode::{FrameStream, ReaderOptions};
 
 /// FNV-1a 64, the same construction the detector uses for its state digests.
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
@@ -128,7 +128,7 @@ fn digest_input(path: &Path, args: &Args) -> Result<(), String> {
     // is one extra pass over the container header, not over the frames.
     let analysis_height = if args.native {
         Some(
-            ihni::decode::probe::probe(path, args.stream_index)
+            wwxds::decode::probe::probe(path, args.stream_index)
                 .map_err(|error| error.to_string())?
                 .height,
         )

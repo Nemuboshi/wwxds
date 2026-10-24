@@ -1,0 +1,12 @@
+[package]
+name = "wwxds-media"
+version = "0.1.0"
+edition = "2024"
+description = "WWXDS media layer: stream probing, display-order luma decoding, and frame overlap"
+publish = false
+
+[dependencies]
+wwxds-core = { path = "../wwxds-core" }
+
+[build-dependencies]
+cc = "1"

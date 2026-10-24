@@ -39,17 +39,17 @@
 - Do not add video encoding, rate control, or bitstream generation to the detection core.
 - Keep the detection algorithm independent of the input video codec.
 - Do not copy Xvid or SCXvid implementation details into the detector.
-- Follow `docs/Architecture.md` and `docs/WwxdDesign.md`. Do not add features outside the documented scope.
+- Follow `docs/Architecture.md` and `docs/WWXDDesign.md`. Do not add features outside the documented scope.
 - Do not add a plugin system or an unused abstraction layer.
 - Keep crate dependencies strictly one-way:
-  - `ihni-core` has no external dependencies.
-  - `ihni-media` depends only on `ihni-core`.
+  - `wwxds-core` has no external dependencies.
+  - `wwxds-media` depends only on `wwxds-core`.
   - The root package handles CLI, file output, and progress reporting.
-  - Never make `ihni-core` depend on `ihni-media` or the root package.
+  - Never make `wwxds-core` depend on `wwxds-media` or the root package.
 
 ## FFI and FFmpeg
 
-- All access to `AVFormatContext`, `AVCodecContext`, `AVFrame`, and `AVPacket` must stay in `crates/ihni-media/csrc/ihni_ffmpeg.c`.
+- All access to `AVFormatContext`, `AVCodecContext`, `AVFrame`, and `AVPacket` must stay in `crates/wwxds-media/csrc/wwxds_ffmpeg.c`.
 - No Rust file may include a libav header, name a libav type, or assume a struct offset.
 - Do not add `bindgen` or a `libclang` dependency. Hand-written `extern "C"` declarations and the C shim are the contract.
 - Every `unsafe` block must include a `SAFETY` comment that explains why the block is sound.
@@ -60,9 +60,9 @@
 
 ## GPU Backends
 
-- GPU acceleration is an optional backend inside `ihni-media` behind a documented selection flag (`--gpu`); the CPU path is always present and is the fallback.
+- GPU acceleration is an optional backend inside `wwxds-media` behind a documented selection flag (`--gpu`); the CPU path is always present and is the fallback.
 - The backend is D3D11: d3d11va hardware decode keeps frames in GPU memory, and a compute shader in the C shim produces the analysis plane. Only the tight analysis plane crosses back to the host.
-- All Direct3D and COM access stays in `crates/ihni-media/csrc/`. No Rust file may include a Direct3D header or name a Direct3D type; hand-written `extern "C"` declarations are the contract.
+- All Direct3D and COM access stays in `crates/wwxds-media/csrc/`. No Rust file may include a Direct3D header or name a Direct3D type; hand-written `extern "C"` declarations are the contract.
 - A GPU backend must reproduce the CPU analysis planes and boundary lists byte for byte on real media, which the GPU integration tests pin; it covers whole-pixel downscale geometries and falls back to the CPU filter for anything else, with the reason on standard error.
 - Backend selection and fallback are explicit: `auto` probes D3D11 and degrades silently with a note, `d3d11` fails the run when unavailable, `off` never touches the device.
 - CUDA and Vulkan paths are future work that requires a rebuilt FFmpeg asset with NVDEC; do not add them without that dependency decision.

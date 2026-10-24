@@ -30,12 +30,12 @@ fn main() -> ExitCode {
     }
 
     let output = cli.output_path();
-    let options = ihni::RunOptions {
+    let options = wwxds::RunOptions {
         stream_index: cli.stream_index,
         analysis_height: cli.analysis_height,
         decoder_threads: cli.decoder_threads,
-        gpu: ihni::decode::GpuMode::parse(&cli.gpu).expect("validated above"),
-        ..ihni::RunOptions::default()
+        gpu: wwxds::decode::GpuMode::parse(&cli.gpu).expect("validated above"),
+        ..wwxds::RunOptions::default()
     };
 
     // Progress goes to standard error on the same sink as the run's messages.
@@ -44,20 +44,20 @@ fn main() -> ExitCode {
     // silent: no renderer is built and the callback does nothing.
     let stderr = std::io::stderr();
     let target = if stderr.is_terminal() {
-        ihni::progress::ProgressTarget::Terminal
+        wwxds::progress::ProgressTarget::Terminal
     } else {
-        ihni::progress::ProgressTarget::Redirected
+        wwxds::progress::ProgressTarget::Redirected
     };
     let mut renderer = if cli.no_progress {
         None
     } else {
-        Some(ihni::progress::ProgressRenderer::new(&stderr, target))
+        Some(wwxds::progress::ProgressRenderer::new(&stderr, target))
     };
 
     // The keyframe file is written only after a complete decode and detection
     // run, so a failed run never publishes a partial result. Standard output
     // stays empty: every message about the run goes to standard error.
-    let result = ihni::detect_video_with_progress(&cli.input, options, |progress| {
+    let result = wwxds::detect_video_with_progress(&cli.input, options, |progress| {
         if let Some(renderer) = &mut renderer {
             renderer.on_progress(progress);
         }
@@ -77,7 +77,7 @@ fn main() -> ExitCode {
         }
     };
 
-    if let Err(error) = ihni::keyframes::write_kf_file(&output, &summary) {
+    if let Err(error) = wwxds::keyframes::write_kf_file(&output, &summary) {
         eprintln!("{error}");
         return ExitCode::from(EXIT_RUNTIME);
     }

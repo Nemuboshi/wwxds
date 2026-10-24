@@ -1,6 +1,6 @@
 //! The Aegisub keyframe output layer.
 //!
-//! These tests pin the public surface of `ihni::keyframes`: the exact document
+//! These tests pin the public surface of `wwxds::keyframes`: the exact document
 //! bytes, frame 0 written once by the output layer, the FPS metadata precedence,
 //! the default path rule, and the publish-on-success contract (never overwrite,
 //! never publish a failed write, and leave no temporary file behind).
@@ -14,13 +14,13 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use ihni::decode::FrameRate;
-use ihni::decode::analysis::AnalysisSize;
-use ihni::decode::probe::{LumaDepth, SourceInfo};
-use ihni::error::AppError;
-use ihni::frame_index::{BoundaryFrameIndex, SourceFrameIndex};
-use ihni::keyframes::{default_output_path, write_kf_file};
-use ihni::{DetectSummary, RunOptions, RunStats, detect_video};
+use wwxds::decode::FrameRate;
+use wwxds::decode::analysis::AnalysisSize;
+use wwxds::decode::probe::{LumaDepth, SourceInfo};
+use wwxds::error::AppError;
+use wwxds::frame_index::{BoundaryFrameIndex, SourceFrameIndex};
+use wwxds::keyframes::{default_output_path, write_kf_file};
+use wwxds::{DetectSummary, RunOptions, RunStats, detect_video};
 
 fn fixture(name: &str) -> Option<PathBuf> {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -51,7 +51,7 @@ fn summary(frames: u64, boundaries: &[u64], source: SourceInfo) -> DetectSummary
         })
         .collect();
     DetectSummary {
-        decode: ihni::decode::DecodeSummary {
+        decode: wwxds::decode::DecodeSummary {
             source,
             analysis_size: AnalysisSize::new(96, 64).expect("96x64 is inside the analysis bounds"),
             decoded_frame_count: frames,

@@ -15,7 +15,8 @@ pub(crate) struct Cli {
     #[arg(short, long, value_name = "FILE")]
     pub(crate) output: Option<PathBuf>,
 
-    /// Absolute input video stream index.
+    /// Absolute input video stream index: the stream's index across all
+    /// streams of the input, as the container numbers them.
     #[arg(long, value_name = "INDEX")]
     pub(crate) stream_index: Option<u32>,
 
@@ -44,11 +45,10 @@ pub(crate) struct Cli {
 }
 
 impl Cli {
-    /// The path the keyframe document is published to.
     pub(crate) fn output_path(&self) -> PathBuf {
         self.output
             .clone()
-            .unwrap_or_else(|| ihni::keyframes::default_output_path(&self.input))
+            .unwrap_or_else(|| wwxds::keyframes::default_output_path(&self.input))
     }
 
     /// Validates settings the argument parser cannot express.
@@ -69,7 +69,7 @@ impl Cli {
         {
             return Err("--decoder-threads must be at least 1".to_owned());
         }
-        if ihni::decode::GpuMode::parse(&self.gpu).is_none() {
+        if wwxds::decode::GpuMode::parse(&self.gpu).is_none() {
             return Err(format!(
                 "--gpu '{}' is not one of off, auto, d3d11",
                 self.gpu

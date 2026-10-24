@@ -48,10 +48,10 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Instant;
 
-use ihni::decode::{FrameStream, ReaderOptions};
-use ihni::detect::{Detector, DetectorFrame};
-use ihni::frame_index::SourceFrameIndex;
-use ihni::{RunOptions, detect_video};
+use wwxds::decode::{FrameStream, ReaderOptions};
+use wwxds::detect::{Detector, DetectorFrame};
+use wwxds::frame_index::SourceFrameIndex;
+use wwxds::{RunOptions, detect_video};
 
 /// Analysis frames kept for the detector-only replay when no count is given.
 const DEFAULT_REPLAY_FRAMES: usize = 120;
@@ -173,11 +173,11 @@ fn capture_replay(
         input,
         ReaderOptions {
             stream_index: None,
-            time_mode: ihni::decode::TimeMode::Unavailable,
+            time_mode: wwxds::decode::TimeMode::Unavailable,
             analysis_height: height,
             decoder_threads,
-            read_ahead: ihni::READ_AHEAD_FRAMES,
-            gpu: ihni::decode::GpuMode::Off,
+            read_ahead: wwxds::READ_AHEAD_FRAMES,
+            gpu: wwxds::decode::GpuMode::Off,
         },
     )
     .map_err(|error| format!("the input could not be opened: {error}"))?;
@@ -349,7 +349,7 @@ fn run_end_to_end(args: &Args) -> ExitCode {
     let boundaries = first.boundaries.len();
 
     let count = runs.len() as f64;
-    let mean = |value: fn(&ihni::RunStats) -> std::time::Duration| -> f64 {
+    let mean = |value: fn(&wwxds::RunStats) -> std::time::Duration| -> f64 {
         runs.iter()
             .map(|(_, summary)| value(&summary.stats).as_secs_f64())
             .sum::<f64>()

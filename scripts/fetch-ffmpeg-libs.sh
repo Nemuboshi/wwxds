@@ -2,7 +2,7 @@
 # Fetch the FFmpeg development prefix and print the FFMPEG_DIR value.
 #
 # The project does not build FFmpeg and does not bundle it. It links the static
-# libraries from a prefix that `ihni-media/build.rs` names in FFMPEG_DIR, and
+# libraries from a prefix that `wwxds-media/build.rs` names in FFMPEG_DIR, and
 # this script produces that prefix from this repository's `ffmpeg-libs-*`
 # release, published by the `ffmpeg-libs.yml` workflow.
 #
@@ -23,7 +23,7 @@
 
 set -euo pipefail
 
-readonly REPOSITORY="Nemuboshi/ihni-rs"
+readonly REPOSITORY="Nemuboshi/wwxds"
 readonly TAG="ffmpeg-libs-9.0.2"
 readonly ASSET="ffmpeg-libs-9.0.2.zip"
 

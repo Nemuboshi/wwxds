@@ -11,6 +11,6 @@ tests/fixtures/detect/*.json text eol=lf
 # Resize regression fixtures (recorded swscale planes). They are compared byte
 # for byte, so they are binary and must not be translated. The index is a text
 # manifest.
-crates/ihni-media/tests/fixtures/resize/*.in binary
-crates/ihni-media/tests/fixtures/resize/*.out binary
-crates/ihni-media/tests/fixtures/resize/index.txt text eol=lf
+crates/wwxds-media/tests/fixtures/resize/*.in binary
+crates/wwxds-media/tests/fixtures/resize/*.out binary
+crates/wwxds-media/tests/fixtures/resize/index.txt text eol=lf

@@ -151,7 +151,7 @@ stats frames=2879 producer_decode_s=2.902 producer_resize_s=7.287 queue_wait_s=8
 ### 4.7 D3D11 hardware decode and analysis-filter backend
 - **Change**: added `--gpu auto|d3d11|off`. In `d3d11` mode the decoder runs as d3d11va and its frames stay in GPU memory; a compute shader in the C shim computes the whole-pixel box filter and only the 8-bit analysis plane crosses back to the host (`docs/Architecture.md` §8). `auto` is the default and falls back to the CPU filter with a note on standard error.
 - **Scope decision**: the pinned FFmpeg build disables NVDEC, Vulkan, and CUDA, so the originally planned NVDEC-to-CUDA zero-copy path is unavailable; the backend was re-based on the d3d11va support the pinned build ships. Integrated GPUs are covered by the same backend (shared memory, no PCIe copy), which folds the planned Vulkan phase into it.
-- **Parity evidence**: `crates/ihni-media/tests/gpu.rs` compares every analysis plane of the two backends byte for byte on the 1080p benchmark clip; `tests/gpu.rs` compares the boundary lists end to end. Boundary lists match the CPU baseline on the whole corpus and both benchmark clips, 8-bit and 10-bit. The corpus digest lists are unchanged (their sources upscale, which the GPU backend declines and the CPU filter handles).
+- **Parity evidence**: `crates/wwxds-media/tests/gpu.rs` compares every analysis plane of the two backends byte for byte on the 1080p benchmark clip; `tests/gpu.rs` compares the boundary lists end to end. Boundary lists match the CPU baseline on the whole corpus and both benchmark clips, 8-bit and 10-bit. The corpus digest lists are unchanged (their sources upscale, which the GPU backend declines and the CPU filter handles).
 - **Measurement** (720-frame 1080p H.264 8-bit clip, default settings, this machine): `backend=d3d11` reports `producer_resize_s` ≈ 0.93 s against 1.20 s on the CPU filter — the per-frame staging read-back synchronizes the device, so the GPU stage is not free, but the decode stage drops to d3d11va cost and the CPU-side filter contention disappears. The 10-bit clip shows the same shape (0.65 s vs 0.87 s). Final interleaved A/B on the corrected CPU filter: `producer_resize_s` 1.29–1.34 s (CPU) vs 0.86–0.89 s (D3D11), while total wall time stays at ≈ 1.5 s on both — on this fast desktop the consumer stages and ambient noise dominate the wall clock, so the stage-level win does not yet translate end to end here; the hardware floor and the removed filter contention are what scale on slower machines.
 - **Limitations**: the GPU path covers whole-pixel downscales only; other geometries fall back to the CPU filter. Requires Direct3D 11.3 (Windows 10 1511 or newer) and a decoder with d3d11va support.
 
@@ -173,14 +173,14 @@ stats frames=2879 producer_decode_s=2.902 producer_resize_s=7.287 queue_wait_s=8
 
 | Optimization | Target Component | Measured Gain | Correctness Evidence |
 | :--- | :--- | :--- | :--- |
-| **Row-slice SAD and dev loops** | `ihni-core` | `detect_s`: 10.3 s → 1.5 s | Identical boundary lists; golden tests pass. |
-| **In-process decoding and overlap** | `ihni-media` | Wall time: 25.4 s → 22.8 s (1080p) | 39/46/50 boundaries unchanged; identical digests. |
-| **Producer/consumer stage split** | `ihni` CLI | Detailed timing visibility | Zero measurement overhead; no output changes. |
-| **swscale dynamic frame API** | `ihni-media` | ~10% faster on 8-bit inputs | FNV-1a digests match across all thread counts. |
-| **Integer box analysis filter** | `ihni-media` | `producer_resize_s`: 1.39 s → 1.20 s (§4.6) | Digests and boundaries identical to swscale baseline on the corpus. |
-| **D3D11 hardware decode + filter** | `ihni-media` | `producer_resize_s`: 1.20 s → 0.93 s; decode stage moves to fixed-function hardware (§4.7) | Per-plane and boundary parity with the CPU path pinned by the GPU integration tests. |
-| **SSE2 `sad16` SIMD kernel** | `ihni-core` | Replay: 35.1 ms → 22.3 ms | Golden parity verified; identical boundary lists. |
-| **SSE2 `dev16` SIMD kernel** | `ihni-core` | Replay: 22.3 ms → 18.7 ms | 149 unit and integration tests pass. |
+| **Row-slice SAD and dev loops** | `wwxds-core` | `detect_s`: 10.3 s → 1.5 s | Identical boundary lists; golden tests pass. |
+| **In-process decoding and overlap** | `wwxds-media` | Wall time: 25.4 s → 22.8 s (1080p) | 39/46/50 boundaries unchanged; identical digests. |
+| **Producer/consumer stage split** | `wwxds` CLI | Detailed timing visibility | Zero measurement overhead; no output changes. |
+| **swscale dynamic frame API** | `wwxds-media` | ~10% faster on 8-bit inputs | FNV-1a digests match across all thread counts. |
+| **Integer box analysis filter** | `wwxds-media` | `producer_resize_s`: 1.39 s → 1.20 s (§4.6) | Digests and boundaries identical to swscale baseline on the corpus. |
+| **D3D11 hardware decode + filter** | `wwxds-media` | `producer_resize_s`: 1.20 s → 0.93 s; decode stage moves to fixed-function hardware (§4.7) | Per-plane and boundary parity with the CPU path pinned by the GPU integration tests. |
+| **SSE2 `sad16` SIMD kernel** | `wwxds-core` | Replay: 35.1 ms → 22.3 ms | Golden parity verified; identical boundary lists. |
+| **SSE2 `dev16` SIMD kernel** | `wwxds-core` | Replay: 22.3 ms → 18.7 ms | 149 unit and integration tests pass. |
 
 ---
 
@@ -190,5 +190,5 @@ When submitting future optimizations:
 1. **Never add overlapping stages**: Do not sum `producer_decode`, `producer_resize`, and `queue_wait` into total elapsed time.
 2. **No claims from CPU usage**: High CPU utilization is not proof of throughput improvement.
 3. **Record regressions honestly**: Document any performance regressions alongside gains (e.g., 10-bit HEVC under multithreaded scaling).
-4. **Decision-core parity is absolute**: The golden vectors of `docs/WwxdDesign.md` §9 are never regenerated to make an optimization pass.
+4. **Decision-core parity is absolute**: The golden vectors of `docs/WWXDDesign.md` §9 are never regenerated to make an optimization pass.
 5. **Analysis-plane changes need corpus evidence**: The analysis plane is now produced by the project's integer box filter (`docs/Architecture.md` §4), not swscale. A change to it must ship a boundary comparison over the committed video corpus, recorded here, alongside the regenerated plane fixtures and digest lists.

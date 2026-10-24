@@ -3,8 +3,8 @@ use std::fmt::{self, Display, Formatter};
 use std::io;
 use std::path::PathBuf;
 
-use ihni_core::detect::DetectError;
-use ihni_media::MediaError;
+use wwxds_core::detect::DetectError;
+use wwxds_media::MediaError;
 
 /// Failure returned by a pipeline entry point.
 ///

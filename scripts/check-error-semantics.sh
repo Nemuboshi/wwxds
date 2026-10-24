@@ -7,18 +7,18 @@
 # replaced with `ADDR` before the report is printed. Everything else -- the exit
 # code, the error class, and the wording -- is left exactly as produced.
 #
-# Usage: scripts/check-error-semantics.sh <ihni-binary> <fixture-dir>
+# Usage: scripts/check-error-semantics.sh <wwxds-binary> <fixture-dir>
 #
 # The report goes to stdout, so a run can be compared against a recorded one:
 #
-#     scripts/check-error-semantics.sh target/release/ihni target/m1-fixtures \
+#     scripts/check-error-semantics.sh target/release/wwxds target/m1-fixtures \
 #         > target/error-semantics-now.txt
 #     diff target/error-semantics-before.txt target/error-semantics-now.txt
 
 set -uo pipefail
 
 if [ "$#" -ne 2 ]; then
-    echo "usage: scripts/check-error-semantics.sh <ihni-binary> <fixture-dir>" >&2
+    echo "usage: scripts/check-error-semantics.sh <wwxds-binary> <fixture-dir>" >&2
     exit 2
 fi
 

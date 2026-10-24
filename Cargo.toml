@@ -1,13 +1,13 @@
 [package]
-name = "ihni"
+name = "wwxds"
 version = "0.1.0"
 edition = "2024"
 description = "A standalone Rust WWXD hard-cut detector, independent of VapourSynth"
 
 [dependencies]
 clap = { version = "4.6", features = ["derive"] }
-ihni-core = { path = "crates/ihni-core" }
-ihni-media = { path = "crates/ihni-media" }
+wwxds-core = { path = "crates/wwxds-core" }
+wwxds-media = { path = "crates/wwxds-media" }
 # The keyframe writer publishes its output through a same-directory temporary
 # file. This was already a development dependency at the same version.
 tempfile = "3.23"

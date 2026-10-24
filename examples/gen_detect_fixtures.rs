@@ -65,7 +65,7 @@ fn fixtures() -> Vec<Fixture> {
     // The full-loop sSAD / complexity accumulators are exercised by the non-cut
     // fixtures (uniform_repeat, bright_ramp, translation_motion). Those run
     // under `cargo test`, which is the debug profile, so the overflow bound
-    // asserted in WwxdDesign.md §6 (core.rs debug_assert!) is validated live on
+    // asserted in WWXDDesign.md §6 (core.rs debug_assert!) is validated live on
     // every parity run; no dedicated adversarial blob is needed. The exact-area
     // buffer arithmetic is covered by a unit test in state.rs instead of a
     // multi-megabyte committed fixture.

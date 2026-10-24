@@ -82,17 +82,17 @@ jobs:
       # tests above, which decode and resize real fixtures through it.
       - name: Check the link gate
         shell: bash
-        run: bash scripts/check-link-gate.sh target/release/ihni.exe
+        run: bash scripts/check-link-gate.sh target/release/wwxds.exe
 
       - name: Check release CLI
         shell: bash
         run: |
-          target/release/ihni.exe --help
-          target/release/ihni.exe --version
+          target/release/wwxds.exe --help
+          target/release/wwxds.exe --version
 
           # A usage error exits 2, not 1: it is a caller mistake, not a runtime
           # failure.
-          if output=$(target/release/ihni.exe --stream-index invalid sample.mp4 2>&1); then
+          if output=$(target/release/wwxds.exe --stream-index invalid sample.mp4 2>&1); then
             printf '%s\n' "$output"
             echo "Invalid stream index unexpectedly succeeded." >&2
             exit 1
@@ -116,7 +116,7 @@ jobs:
           # header lines, frame 0 from the file layer, then the cut at frame 6.
           # The run must leave standard output empty.
           rm -f target/m1-fixtures/cut8.mkv.kf.txt
-          stdout=$(target/release/ihni.exe target/m1-fixtures/cut8.mkv 2>/dev/null)
+          stdout=$(target/release/wwxds.exe target/m1-fixtures/cut8.mkv 2>/dev/null)
           if [ -n "$stdout" ]; then
             echo "A successful run wrote to standard output: $stdout" >&2
             exit 1
@@ -134,7 +134,7 @@ jobs:
           rm -f cut8-expected.kf.txt
 
           # Re-running must refuse to overwrite the published file.
-          if target/release/ihni.exe target/m1-fixtures/cut8.mkv >/dev/null 2>&1; then
+          if target/release/wwxds.exe target/m1-fixtures/cut8.mkv >/dev/null 2>&1; then
             echo "A second run overwrote the existing keyframe file." >&2
             exit 1
           fi
@@ -143,7 +143,7 @@ jobs:
           # must publish nothing. `--no-progress` keeps the periodic display out
           # of the captured output so the recorded message stays diffable.
           rm -f target/m1-fixtures/truncated.mkv.kf.txt
-          if output=$(target/release/ihni.exe --no-progress target/m1-fixtures/truncated.mkv 2>&1); then
+          if output=$(target/release/wwxds.exe --no-progress target/m1-fixtures/truncated.mkv 2>&1); then
             printf '%s\n' "$output"
             echo "A truncated container unexpectedly succeeded." >&2
             exit 1
@@ -172,7 +172,7 @@ jobs:
           # With progress enabled (the default) the same failing run still
           # shows intermediate progress and ends on the error, never a success
           # message.
-          if output=$(target/release/ihni.exe target/m1-fixtures/truncated.mkv 2>&1); then
+          if output=$(target/release/wwxds.exe target/m1-fixtures/truncated.mkv 2>&1); then
             echo "A truncated container with progress unexpectedly succeeded." >&2
             exit 1
           fi

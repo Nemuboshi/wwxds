@@ -7,7 +7,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    Command::new(env!("CARGO_BIN_EXE_ihni"))
+    Command::new(env!("CARGO_BIN_EXE_wwxds"))
         .args(arguments)
         .output()
         .expect("the CLI binary starts")
@@ -68,7 +68,7 @@ fn help_and_version_succeed() {
 
     let version = run(["--version"]);
     assert!(version.status.success());
-    assert!(String::from_utf8_lossy(&version.stdout).contains("ihni 0.1.0"));
+    assert!(String::from_utf8_lossy(&version.stdout).contains("wwxds 0.1.0"));
 }
 
 #[test]
@@ -178,7 +178,7 @@ fn readable_non_video_path_fails_with_a_probe_message() {
     let input = temporary.path().join("readable input with spaces.mp4");
     std::fs::write(&input, b"fixture bytes").expect("temporary input file is written");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_ihni"))
+    let output = Command::new(env!("CARGO_BIN_EXE_wwxds"))
         .args(["--stream-index", "3"])
         .arg(input.as_os_str())
         .output()
