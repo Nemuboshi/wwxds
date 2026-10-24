@@ -177,6 +177,7 @@ fn capture_replay(
             analysis_height: height,
             decoder_threads,
             read_ahead: ihni::READ_AHEAD_FRAMES,
+            gpu: ihni::decode::GpuMode::Off,
         },
     )
     .map_err(|error| format!("the input could not be opened: {error}"))?;

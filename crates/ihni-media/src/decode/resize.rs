@@ -342,38 +342,11 @@ fn horizontal_row(
 ) {
     match (format, columns.uniform_step, raw_sums) {
         (LumaFormat::Gray8, Some(step), true) => {
-            #[cfg(target_arch = "x86_64")]
-            {
-                uniform_gray8_row_sse2(row, out_row, step);
-            }
-            #[cfg(not(target_arch = "x86_64"))]
-            {
-                let step = step as usize;
-                for (output, out) in out_row.iter_mut().enumerate() {
-                    let run = &row[output * step..][..step];
-                    let sum: u32 = run.iter().map(|byte| u32::from(*byte)).sum();
-                    *out = sum;
-                }
-            }
+            uniform_gray8_row(row, out_row, step as usize);
         }
         (_, Some(step), true) => {
-            let step = step as usize;
-            #[cfg(target_arch = "x86_64")]
-            {
-                match format {
-                    LumaFormat::Gray10Le if step <= 64 => {
-                        uniform_gray10_row_sse2::<false>(row, out_row, step)
-                    }
-                    LumaFormat::Gray10Be if step <= 64 => {
-                        uniform_gray10_row_sse2::<true>(row, out_row, step)
-                    }
-                    _ => uniform_row_scalar_16(row, out_row, step, format),
-                }
-            }
-            #[cfg(not(target_arch = "x86_64"))]
-            {
-                uniform_row_scalar_16(row, out_row, step, format);
-            }
+            let swap = format == LumaFormat::Gray10Be;
+            uniform_gray10_row(row, out_row, step as usize, swap);
         }
         (_, Some(step), false) => {
             let step = step as usize;
@@ -412,146 +385,96 @@ fn horizontal_row(
 
 /// Sums every whole-pixel block of one gray8 row into one output sum.
 ///
-/// This is the x86-64 kernel of the raw uniform horizontal pass: output `i`
-/// is the byte sum of `row[i * step .. i * step + step]`. Every 16 outputs
-/// run on SSE2: the block bytes of 16 outputs are 16 overlapping byte
-/// vectors one byte apart, widened to `u16` and added — the sums of at most
-/// 255 per byte stay exact in `u16` for every step below 258 — then widened
-/// to `u32` for the store. SSE2 is baseline on x86-64, so no runtime
-/// detection is needed. The portable path in `horizontal_row` computes the
-/// same sums for other targets and is what the tests compare against.
-#[cfg(target_arch = "x86_64")]
-fn uniform_gray8_row_sse2(row: &[u8], out: &mut [u32], step: u32) {
-    use std::arch::x86_64::{
-        _mm_add_epi16, _mm_loadu_si128, _mm_setzero_si128, _mm_storeu_si128, _mm_unpackhi_epi8,
-        _mm_unpackhi_epi16, _mm_unpacklo_epi8, _mm_unpacklo_epi16,
-    };
-
-    let step = step as usize;
-    let width = out.len();
-    // Every load below reads 16 bytes at `i * step + k` for `i + 16 <= width`
-    // and `k < step`, so the last byte sits before `width * step`. The slice
-    // the caller passes holds at least one source row, which is exactly
-    // `width * step` bytes here.
-    assert!(row.len() >= width * step);
-    // SAFETY: every intrinsic call in this block is SSE2, which is baseline
-    // on x86-64, so the feature is always available. The memory intrinsics
-    // are bounded by the assertion above; the arithmetic intrinsics touch
-    // only the local vectors.
-    unsafe {
-        let zeros = _mm_setzero_si128();
-        let mut i = 0;
-        while i + 16 <= width {
-            let base = i * step;
-            let (mut low, mut high) = (zeros, zeros);
-            for k in 0..step {
-                // SAFETY: the assertion above bounds every byte this load
-                // reads: `base + k + 15 < width * step <= row.len()`. The
-                // load is unaligned by design; source rows are not aligned.
-                let bytes = _mm_loadu_si128(row.as_ptr().add(base + k).cast());
-                low = _mm_add_epi16(low, _mm_unpacklo_epi8(bytes, zeros));
-                high = _mm_add_epi16(high, _mm_unpackhi_epi8(bytes, zeros));
+/// Output `i` is the byte sum of `row[i * step .. i * step + step]`. The
+/// blocks are disjoint, so there is no sliding-window shortcut; each output
+/// sums its own run. An earlier SSE2 version of this pass computed shifted
+/// sliding windows instead of block sums for steps above one and was
+/// removed; this form stays a plain block sum, which the GPU cross-check in
+/// `tests/gpu.rs` pins byte for byte on real media. The common steps run
+/// through a fixed-size kernel so the block width is known to the compiler.
+fn uniform_gray8_row(row: &[u8], out: &mut [u32], step: usize) {
+    debug_assert!(row.len() >= out.len() * step);
+    match step {
+        1 => uniform_gray8_row_const::<1>(row, out),
+        2 => uniform_gray8_row_const::<2>(row, out),
+        3 => uniform_gray8_row_const::<3>(row, out),
+        4 => uniform_gray8_row_const::<4>(row, out),
+        _ => {
+            for (output, out) in out.iter_mut().enumerate() {
+                let run = &row[output * step..][..step];
+                *out = run.iter().map(|byte| u32::from(*byte)).sum();
             }
-            // SAFETY: the stores write the 16 `u32` outputs `out[i..i + 16]`,
-            // which the slice holds; the rows are not alignment-guaranteed.
-            let out = out.as_mut_ptr().add(i);
-            _mm_storeu_si128(out.cast(), _mm_unpacklo_epi16(low, zeros));
-            _mm_storeu_si128(out.add(4).cast(), _mm_unpackhi_epi16(low, zeros));
-            _mm_storeu_si128(out.add(8).cast(), _mm_unpacklo_epi16(high, zeros));
-            _mm_storeu_si128(out.add(12).cast(), _mm_unpackhi_epi16(high, zeros));
-            i += 16;
         }
     }
-    let mut i = (width / 16) * 16;
-    while i < width {
-        let run = &row[i * step..][..step];
-        out[i] = run.iter().map(|byte| u32::from(*byte)).sum();
-        i += 1;
+}
+
+/// The fixed-width gray8 block-sum kernel.
+fn uniform_gray8_row_const<const STEP: usize>(row: &[u8], out: &mut [u32]) {
+    let blocks = row[..out.len() * STEP].as_chunks::<STEP>().0;
+    for (block, out) in blocks.iter().zip(out.iter_mut()) {
+        let mut sum = 0u32;
+        for byte in block {
+            sum += u32::from(*byte);
+        }
+        *out = sum;
     }
 }
 
 /// Sums every whole-pixel block of one 10-bit row into one output sum.
 ///
-/// The 16-bit analogue of [`uniform_gray8_row_sse2`]: output `i` is the sum
-/// of the little-endian samples `row16[i * step .. i * step + step]`, or the
-/// byte-swapped ones when `SWAP` is set (big-endian sources). The sums are
-/// exact in `u16` because the caller only routes steps up to 64 here
-/// (64 x 1023 = 65472); larger steps and non-x86-64 targets take
-/// [`uniform_row_scalar_16`], which computes the same sums.
-#[cfg(target_arch = "x86_64")]
-fn uniform_gray10_row_sse2<const SWAP: bool>(row: &[u8], out: &mut [u32], step: usize) {
-    use std::arch::x86_64::{
-        _mm_add_epi16, _mm_loadu_si128, _mm_or_si128, _mm_setzero_si128, _mm_slli_epi16,
-        _mm_srli_epi16, _mm_storeu_si128, _mm_unpackhi_epi16, _mm_unpacklo_epi16,
-    };
-
-    let width = out.len();
-    // Every load below reads 16 bytes — eight samples — at sample index
-    // `i * step + k` for `i + 8 <= width` and `k < step`, so the last byte
-    // sits before `width * step * 2`. The slice the caller passes holds at
-    // least one source row, which is exactly that many bytes here.
-    assert!(row.len() >= width * step * 2);
-    // SAFETY: every intrinsic call in this block is SSE2, which is baseline
-    // on x86-64. The memory intrinsics are bounded by the assertion above;
-    // the arithmetic intrinsics touch only local vectors.
-    unsafe {
-        let zeros = _mm_setzero_si128();
-        let mut i = 0;
-        while i + 8 <= width {
-            let base = (i * step) * 2;
-            let mut acc = zeros;
-            for k in 0..step {
-                // SAFETY: the assertion above bounds every byte this load
-                // reads: it reads `base + 2 * k .. base + 2 * k + 16`, and
-                // the last byte is `2 * ((i + 8) * step - 1) + 1 < 2 * width
-                // * step <= row.len()`. The load is unaligned by design;
-                // source rows are not aligned.
-                let mut samples = _mm_loadu_si128(row.as_ptr().add(base + k * 2).cast());
-                if SWAP {
-                    samples = _mm_or_si128(_mm_slli_epi16(samples, 8), _mm_srli_epi16(samples, 8));
-                }
-                acc = _mm_add_epi16(acc, samples);
+/// Output `i` is the sample sum of `row16[i * step .. i * step + step]`;
+/// the samples are little-endian, or byte-swapped when `swap` is set
+/// (big-endian sources). Like [`uniform_gray8_row`], the common steps use a
+/// fixed-size kernel.
+fn uniform_gray10_row(row: &[u8], out: &mut [u32], step: usize, swap: bool) {
+    debug_assert!(row.len() >= out.len() * step * 2);
+    match (step, swap) {
+        (1, false) => uniform_gray10_row_const::<1, false>(row, out),
+        (2, false) => uniform_gray10_row_const::<2, false>(row, out),
+        (3, false) => uniform_gray10_row_const::<3, false>(row, out),
+        (4, false) => uniform_gray10_row_const::<4, false>(row, out),
+        (1, true) => uniform_gray10_row_const::<1, true>(row, out),
+        (2, true) => uniform_gray10_row_const::<2, true>(row, out),
+        (3, true) => uniform_gray10_row_const::<3, true>(row, out),
+        (4, true) => uniform_gray10_row_const::<4, true>(row, out),
+        _ => {
+            for (output, out) in out.iter_mut().enumerate() {
+                let run = &row[output * step * 2..][..step * 2];
+                *out = run
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|pair| {
+                        sample_pair(
+                            pair,
+                            if swap {
+                                LumaFormat::Gray10Be
+                            } else {
+                                LumaFormat::Gray10Le
+                            },
+                        )
+                    })
+                    .sum();
             }
-            // SAFETY: the stores write the eight `u32` outputs
-            // `out[i..i + 8]`, which the slice holds; the rows are not
-            // alignment-guaranteed.
-            let out = out.as_mut_ptr().add(i);
-            _mm_storeu_si128(out.cast(), _mm_unpacklo_epi16(acc, zeros));
-            _mm_storeu_si128(out.add(4).cast(), _mm_unpackhi_epi16(acc, zeros));
-            i += 8;
         }
     }
-    let mut i = (width / 8) * 8;
-    while i < width {
-        out[i] = uniform_row_scalar_16_sample(row, i, step, SWAP);
-        i += 1;
-    }
 }
 
-/// Scalar whole-pixel 16-bit row sums, for targets without SSE2 and for
-/// steps beyond the `u16`-exact range of the SSE2 kernel.
-fn uniform_row_scalar_16(row: &[u8], out: &mut [u32], step: usize, format: LumaFormat) {
-    let swap = format == LumaFormat::Gray10Be;
-    for (output, out) in out.iter_mut().enumerate() {
-        *out = uniform_row_scalar_16_sample(row, output, step, swap);
-    }
-}
-
-/// One scalar 16-bit block sum at sample index `output`.
-fn uniform_row_scalar_16_sample(row: &[u8], output: usize, step: usize, swap: bool) -> u32 {
-    let run = &row[output * step * 2..][..step * 2];
-    run.as_chunks::<2>()
-        .0
-        .iter()
-        .map(|pair| {
-            let sample = if swap {
+/// The fixed-width 10-bit block-sum kernel.
+fn uniform_gray10_row_const<const STEP: usize, const SWAP: bool>(row: &[u8], out: &mut [u32]) {
+    let pairs = row[..out.len() * STEP * 2].as_chunks::<2>().0;
+    for (index, out) in out.iter_mut().enumerate() {
+        let mut sum = 0u32;
+        for pair in &pairs[index * STEP..][..STEP] {
+            let value = if SWAP {
                 u16::from_be_bytes([pair[0], pair[1]])
             } else {
                 u16::from_le_bytes([pair[0], pair[1]])
             };
-            u32::from(sample)
-        })
-        .sum()
+            sum += u32::from(value);
+        }
+        *out = sum;
+    }
 }
 
 /// Reads one little- or big-endian sample pair as its unsigned integer value.

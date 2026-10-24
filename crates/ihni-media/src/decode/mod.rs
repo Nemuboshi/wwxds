@@ -15,6 +15,7 @@
 //!    overlaps detection without changing the frame sequence.
 
 pub mod analysis;
+pub mod gpu;
 pub mod overlap;
 pub mod probe;
 pub mod reader;
@@ -22,6 +23,7 @@ pub mod resize;
 pub mod time;
 
 pub use analysis::{ANALYSIS_HEIGHT, AnalysisSize, AnalysisSizeError};
+pub use gpu::GpuMode;
 pub use overlap::{Frame, FrameStream};
 pub use probe::{LumaDepth, SourceInfo};
 pub use reader::{FrameMeta, FrameReader, PreparedFrame, ReadOutcome, ReaderOptions};

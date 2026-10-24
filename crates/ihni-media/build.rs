@@ -28,6 +28,15 @@ const WINDOWS_SYSTEM_LIBS: [&str; 16] = [
     "crypt32", "psapi", "uuid", "oleaut32", "shlwapi", "gdi32", "vfw32",
 ];
 
+/// System libraries the D3D11 hardware decode and analysis-filter path uses.
+///
+/// `d3d11` and `dxgi` are the device and context APIs, `dxguid` defines the
+/// interface IIDs the shim references, and `d3dcompiler` compiles the filter's
+/// compute shader at run start. All of them import system DLLs that are part
+/// of every supported Windows installation, and the link gate's FFmpeg check
+/// does not touch them.
+const D3D11_SYSTEM_LIBS: [&str; 4] = ["d3d11", "dxgi", "dxguid", "d3dcompiler"];
+
 fn main() {
     println!("cargo:rerun-if-env-changed=FFMPEG_DIR");
     println!("cargo:rerun-if-changed=csrc/ihni_ffmpeg.c");
@@ -80,6 +89,11 @@ fn main() {
         "cargo:rustc-link-lib=static={}",
         zlib_name(&directory.join("lib"))
     );
+    // The D3D11 path compiles and links in every build, so its system
+    // libraries are linked unconditionally like the FFmpeg ones.
+    for library in D3D11_SYSTEM_LIBS {
+        println!("cargo:rustc-link-lib={library}");
+    }
     for library in WINDOWS_SYSTEM_LIBS {
         println!("cargo:rustc-link-lib={library}");
     }

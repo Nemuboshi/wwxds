@@ -17,7 +17,7 @@
 //! borrows the input, so the borrow checker rejects a second decode while a
 //! view is alive. The view's slice is only valid until that borrow ends.
 
-use std::ffi::{CStr, CString, c_char, c_int};
+use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::io;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
@@ -152,7 +152,8 @@ fn usable_rate(numerator: c_int, denominator: c_int) -> Option<(u32, u32)> {
 /// Flat description of one decoded frame.
 ///
 /// `data` points into the decoder's frame and is invalidated by the next call on
-/// the same input. Field order and types must match `ihni_frame_view`.
+/// the same input. Field order and types must match `ihni_frame_view`. On a
+/// D3D11 hardware frame the texture fields replace the plane fields.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FrameView {
@@ -164,6 +165,25 @@ pub(crate) struct FrameView {
     pub(crate) data: *const u8,
     pub(crate) has_pts: c_int,
     pub(crate) pts: i64,
+    pub(crate) is_d3d11: c_int,
+    pub(crate) texture: *const c_void,
+    pub(crate) subresource: c_int,
+}
+
+/// The analysis-plane filter parameters of one GPU run, matching
+/// `ihni_d3d11_params` in the C shim. They are the exact integers the CPU box
+/// filter computes for the same geometry (`docs/Architecture.md` §4).
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct D3d11Params {
+    pub(crate) dst_width: c_int,
+    pub(crate) dst_height: c_int,
+    pub(crate) block_w: c_int,
+    pub(crate) block_h: c_int,
+    pub(crate) half: c_int,
+    pub(crate) block: c_int,
+    pub(crate) out_shift: c_int,
+    pub(crate) sample_shift: c_int,
 }
 
 // SAFETY: every declaration names a function the shim in `csrc/ihni_ffmpeg.c`
@@ -193,11 +213,29 @@ unsafe extern "C" {
         errlen: usize,
     ) -> c_int;
 
+    fn ihni_input_open_gpu(
+        path: *const c_char,
+        stream_index: c_int,
+        decoder_threads: c_int,
+        out: *mut *mut IhniInput,
+        err: *mut c_char,
+        errlen: usize,
+    ) -> c_int;
+
     fn ihni_input_stream(input: *const IhniInput, out: *mut StreamInfo);
 
     fn ihni_input_next_frame(
         input: *mut IhniInput,
         out: *mut FrameView,
+        err: *mut c_char,
+        errlen: usize,
+    ) -> c_int;
+
+    fn ihni_input_d3d11_filter(
+        input: *mut IhniInput,
+        view: *const FrameView,
+        params: *const D3d11Params,
+        dst: *mut u8,
         err: *mut c_char,
         errlen: usize,
     ) -> c_int;
@@ -376,6 +414,77 @@ impl Input {
             )
         };
 
+        Self::from_status(status, raw, error, path, stream_index)
+    }
+
+    /// Opens `path` with D3D11 hardware decoding.
+    ///
+    /// The decoded frames stay in GPU memory as textures; [`FrameRef::filter`]
+    /// produces the analysis plane from them. Every failure mode — no Direct3D
+    /// 11 device, a decoder without d3d11va, an unusable driver — is an error
+    /// here; the caller decides whether to fall back to software decoding.
+    pub(crate) fn open_gpu(
+        path: &Path,
+        stream_index: Option<u32>,
+        decoder_threads: Option<u32>,
+    ) -> Result<Self, MediaError> {
+        init();
+
+        let index = match stream_index {
+            None => -1,
+            Some(index) => i32::try_from(index).map_err(|_| MediaError::StreamNotFound {
+                path: path.to_path_buf(),
+                stream_index: index,
+            })?,
+        };
+        let threads = match decoder_threads {
+            None => 0,
+            Some(threads) => i32::try_from(threads).unwrap_or(i32::MAX),
+        };
+
+        let text = path.to_str().ok_or_else(|| MediaError::Decode {
+            operation: "convert the input path to UTF-8 for the decoder",
+            path: path.to_path_buf(),
+            source: io::Error::new(
+                io::ErrorKind::InvalidData,
+                "the input path is not valid UTF-8",
+            ),
+        })?;
+        let c_path = CString::new(text).map_err(|_| MediaError::Decode {
+            operation: "pass the input path to the decoder",
+            path: path.to_path_buf(),
+            source: io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "the input path contains a NUL byte",
+            ),
+        })?;
+
+        let mut raw: *mut IhniInput = ptr::null_mut();
+        let mut error = vec![0u8; TEXT_BUFFER];
+        // SAFETY: the same contract as `ihni_input_open`; the shim only differs
+        // in configuring the decoder for D3D11 hardware frames.
+        let status = unsafe {
+            ihni_input_open_gpu(
+                c_path.as_ptr(),
+                index,
+                threads,
+                &mut raw,
+                error.as_mut_ptr().cast::<c_char>(),
+                TEXT_BUFFER,
+            )
+        };
+
+        Self::from_status(status, raw, error, path, stream_index)
+    }
+
+    /// Wraps a shim open result, mapping its status codes to crate errors.
+    fn from_status(
+        status: c_int,
+        raw: *mut IhniInput,
+        error: Vec<u8>,
+        path: &Path,
+        stream_index: Option<u32>,
+    ) -> Result<Self, MediaError> {
         if status != 0 {
             let reason = error_text(&error);
             return Err(match status {
@@ -446,6 +555,7 @@ impl Input {
                 let view = unsafe { view.assume_init() };
                 Ok(Some(FrameRef {
                     view,
+                    input: self.raw,
                     _input: PhantomData,
                 }))
             }
@@ -470,6 +580,10 @@ impl Drop for Input {
 /// A decoded frame borrowed from an [`Input`].
 pub(crate) struct FrameRef<'a> {
     view: FrameView,
+    /// The owning input handle, for the GPU filter call. The `PhantomData`
+    /// keeps the exclusive borrow that guarantees the handle stays live and
+    /// the view valid.
+    input: NonNull<IhniInput>,
     _input: PhantomData<&'a mut Input>,
 }
 
@@ -517,6 +631,43 @@ impl FrameRef<'_> {
     pub(crate) fn luma_format(&self) -> Option<LumaFormat> {
         let code = self.view.luma_pixel_format;
         luma_format_supported(code).then(|| luma_format_from_code(code))?
+    }
+
+    /// Whether this frame is a D3D11 hardware frame with no host plane.
+    pub(crate) fn is_d3d11(&self) -> bool {
+        self.view.is_d3d11 != 0
+    }
+
+    /// Runs the D3D11 analysis filter on this hardware frame into `target`.
+    ///
+    /// `params` are the exact integers the CPU box filter computes for the
+    /// same geometry. The shim compiles and binds the filter on the first
+    /// call and reuses it for the rest of the run.
+    pub(crate) fn filter(&self, params: &D3d11Params, target: &mut [u8]) -> Result<(), String> {
+        let mut error = vec![0u8; TEXT_BUFFER];
+        // SAFETY: the handle and the view are live — the borrow of `self`
+        // proves both — and `target` holds exactly the tight analysis plane
+        // the caller validated. The shim writes at most `TEXT_BUFFER` bytes
+        // to `error` and exactly `dst_width * dst_height` bytes to `target`.
+        let status = unsafe {
+            ihni_input_d3d11_filter(
+                self.input.as_ptr(),
+                &self.view,
+                params,
+                target.as_mut_ptr(),
+                error.as_mut_ptr().cast::<c_char>(),
+                TEXT_BUFFER,
+            )
+        };
+        if status != 0 {
+            let diagnostic = take_diagnostic();
+            return Err(if diagnostic.is_empty() {
+                error_text(&error)
+            } else {
+                diagnostic
+            });
+        }
+        Ok(())
     }
 }
 

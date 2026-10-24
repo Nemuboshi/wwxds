@@ -106,6 +106,10 @@ pub struct FrameStream {
     path: PathBuf,
     source: SourceInfo,
     size: AnalysisSize,
+    /// The analysis-plane backend the reader settled on.
+    gpu_backend: &'static str,
+    /// Why an `Auto` GPU attempt fell back, reported by the caller.
+    gpu_fallback: Option<String>,
     ended: bool,
 }
 
@@ -118,6 +122,8 @@ impl FrameStream {
         let reader = FrameReader::open(path, options)?;
         let source = reader.source().clone();
         let size = reader.analysis_size();
+        let gpu_backend = reader.gpu_backend();
+        let gpu_fallback = reader.gpu_fallback().map(str::to_owned);
         let slots = options.slot_count();
 
         let (ready_tx, ready_rx) = sync_channel::<Produced>(slots);
@@ -151,6 +157,8 @@ impl FrameStream {
             path: path.to_path_buf(),
             source,
             size,
+            gpu_backend,
+            gpu_fallback,
             ended: false,
         })
     }
@@ -236,6 +244,16 @@ impl FrameStream {
         } else {
             None
         }
+    }
+
+    /// The analysis-plane backend this run settled on: `"cpu"` or `"d3d11"`.
+    pub fn gpu_backend(&self) -> &'static str {
+        self.gpu_backend
+    }
+
+    /// Why an `Auto` GPU attempt fell back to the CPU path, if it did.
+    pub fn gpu_fallback(&self) -> Option<&str> {
+        self.gpu_fallback.as_deref()
     }
 }
 

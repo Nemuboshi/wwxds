@@ -60,17 +60,18 @@
 
 ## GPU Backends
 
-- GPU acceleration is an optional backend inside `ihni-media` behind a documented selection flag; the CPU path is always present and is the fallback.
-- All CUDA driver, runtime, and kernel-launch access stays in `crates/ihni-media/csrc/`. No Rust file may include a CUDA header or name a CUDA type; hand-written `extern "C"` declarations are the contract.
-- Kernels are compiled by `nvcc` as part of the shim build; a missing CUDA toolkit must degrade the build to the CPU path, not fail it, unless an explicit build feature asks for the backend.
-- A GPU backend must reproduce the CPU analysis planes and detection statistics byte for byte, and must keep frame data on the device between stages whenever it can; a per-frame round trip through host memory must be measured before it is accepted.
-- Backend selection and fallback are explicit: probe the requested backend, report the outcome on standard error, and fall back to CPU without changing the output bytes.
+- GPU acceleration is an optional backend inside `ihni-media` behind a documented selection flag (`--gpu`); the CPU path is always present and is the fallback.
+- The backend is D3D11: d3d11va hardware decode keeps frames in GPU memory, and a compute shader in the C shim produces the analysis plane. Only the tight analysis plane crosses back to the host.
+- All Direct3D and COM access stays in `crates/ihni-media/csrc/`. No Rust file may include a Direct3D header or name a Direct3D type; hand-written `extern "C"` declarations are the contract.
+- A GPU backend must reproduce the CPU analysis planes and boundary lists byte for byte on real media, which the GPU integration tests pin; it covers whole-pixel downscale geometries and falls back to the CPU filter for anything else, with the reason on standard error.
+- Backend selection and fallback are explicit: `auto` probes D3D11 and degrades silently with a note, `d3d11` fails the run when unavailable, `off` never touches the device.
+- CUDA and Vulkan paths are future work that requires a rebuilt FFmpeg asset with NVDEC; do not add them without that dependency decision.
 
 ## Analysis Plane
 
 - Produce the 8-bit analysis plane with the project's integer box (area-average) filter, defined exactly in `docs/Architecture.md`.
 - Keep the filter arithmetic in exact integers (weight accumulation and rounded division), never floating point, so every backend produces byte-identical planes.
-- The CPU implementation is the reference. A GPU backend is accepted only when its planes match the CPU implementation byte for byte on the committed fixtures.
+- The CPU implementation is the reference. A GPU backend is accepted only when its planes match the CPU implementation byte for byte — on synthetic fixtures where the geometry applies, and on real media through the GPU integration tests.
 - Read decoded luma planes under their actual strides and reduce 10-bit sources to 8-bit only after their integer mean is computed, by `>> 2` of the rounded mean.
 - Do not add a second filter with different arithmetic to the same backend.
 - Do not break byte parity with committed fixtures or digest lists; regenerate them only through the committed generator and record the change.

@@ -20,7 +20,7 @@ pub mod progress;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use decode::{FrameStream, ReaderOptions, TimeMode};
+use decode::{FrameStream, GpuMode, ReaderOptions, TimeMode};
 use detect::{Detector, DetectorFrame};
 use error::AppError;
 use progress::Progress;
@@ -49,6 +49,9 @@ pub struct RunOptions {
     pub analysis_height: Option<u32>,
     /// Decoder thread count. `None` lets the decoder choose.
     pub decoder_threads: Option<u32>,
+    /// Which analysis-plane backend the run uses. The default is
+    /// [`GpuMode::Off`]; see `docs/Architecture.md` §8 for the backends.
+    pub gpu: GpuMode,
 }
 
 impl Default for RunOptions {
@@ -58,6 +61,7 @@ impl Default for RunOptions {
             time_mode: TimeMode::Unavailable,
             analysis_height: None,
             decoder_threads: None,
+            gpu: GpuMode::Off,
         }
     }
 }
@@ -93,6 +97,8 @@ pub struct RunStats {
     pub total: Duration,
     /// Frames the decoder produced ahead of the detector.
     pub read_ahead: usize,
+    /// The analysis-plane backend the run settled on: `"cpu"` or `"d3d11"`.
+    pub backend: &'static str,
 }
 
 impl RunStats {
@@ -171,8 +177,17 @@ pub fn detect_video_with_progress(
             analysis_height: options.analysis_height,
             decoder_threads: options.decoder_threads,
             read_ahead: READ_AHEAD_FRAMES,
+            gpu: options.gpu,
         },
     )?;
+    // An `Auto` GPU attempt that could not proceed is a diagnostic, not an
+    // error: the run continues on the CPU path and says so on standard error.
+    if let Some(reason) = stream.gpu_fallback() {
+        eprintln!(
+            "note: the D3D11 backend is unavailable ({reason}); using the CPU analysis filter"
+        );
+    }
+    let backend = stream.gpu_backend();
     let size = stream.analysis_size();
     let mut detector =
         Detector::new(size.width(), size.height()).map_err(|source| AppError::Detection {
@@ -261,6 +276,7 @@ pub fn detect_video_with_progress(
             detect: detect_time,
             total: total_start.elapsed(),
             read_ahead: READ_AHEAD_FRAMES,
+            backend,
         },
     })
 }

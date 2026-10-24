@@ -24,6 +24,7 @@ use crate::luma::LumaFormat;
 
 use super::ProducerTimings;
 use super::analysis::AnalysisSize;
+use super::gpu::{D3d11Filter, GpuMode};
 use super::probe::SourceInfo;
 use super::resize::FrameResizer;
 use super::time::TimeMode;
@@ -87,6 +88,10 @@ pub struct ReaderOptions {
     /// bounded by the slot count rather than by the frame count. `1` means no
     /// read-ahead: the producer waits for the consumer after every frame.
     pub read_ahead: usize,
+    /// Which analysis-plane backend the run uses. `Off` decodes and filters
+    /// on the CPU, the historical behavior; `Auto` and `D3d11` are described
+    /// in [`GpuMode`](super::gpu::GpuMode) and `docs/Architecture.md` §8.
+    pub gpu: GpuMode,
 }
 
 impl Default for ReaderOptions {
@@ -97,6 +102,7 @@ impl Default for ReaderOptions {
             analysis_height: None,
             decoder_threads: None,
             read_ahead: 1,
+            gpu: GpuMode::Off,
         }
     }
 }
@@ -119,7 +125,7 @@ pub struct FrameReader {
     input: ffi::Input,
     /// Built from the first frame's own luma format and geometry, then reused
     /// for every later frame.
-    resizer: Option<FrameResizer>,
+    filter: Option<PlaneFilter>,
     path: PathBuf,
     source: SourceInfo,
     size: AnalysisSize,
@@ -138,9 +144,32 @@ pub struct FrameReader {
     /// Producer-side stage time accumulated over this reader's frames.
     ///
     /// `decode` is the libavcodec call that produced each frame, `resize` the
-    /// swscale-plus-reduction work on it. Both are one `Instant` pair per
-    /// frame around the existing calls, never inside a pixel loop.
+    /// analysis-plane work on it. Both are one `Instant` pair per frame around
+    /// the existing calls, never inside a pixel loop.
     producer: ProducerTimings,
+    /// Why an `Auto` GPU attempt did not happen, for the caller to report.
+    /// `None` on the CPU path and on a successful GPU path.
+    gpu_fallback: Option<String>,
+    /// Which analysis-plane backend the open settled on.
+    gpu_backend: &'static str,
+}
+
+/// The analysis-plane filter of one run: the CPU implementation, or the D3D11
+/// backend whose geometry was planned at open time.
+enum PlaneFilter {
+    Cpu(Box<FrameResizer>),
+    D3d11(D3d11Filter),
+}
+
+impl PlaneFilter {
+    /// The luma format the CPU filter was built for. Hardware frames track
+    /// their format inside the GPU filter, so this is `None` there.
+    fn source_format(&self) -> Option<LumaFormat> {
+        match self {
+            Self::Cpu(resizer) => Some(resizer.source_format()),
+            Self::D3d11(_) => None,
+        }
+    }
 }
 
 /// Metadata for one complete frame.
@@ -159,8 +188,15 @@ impl FrameReader {
     ///
     /// The stream is selected and described before any frame is read, so an
     /// unusable selection fails here rather than part-way through a run.
+    ///
+    /// When a GPU mode is requested, the run reopens the input with D3D11
+    /// hardware decoding after the software open has described the stream. An
+    /// `Auto` attempt that cannot proceed — no Direct3D 11 device, no d3d11va
+    /// decoder, a geometry the GPU filter does not cover — falls back to the
+    /// software input and records the reason in [`FrameReader::gpu_fallback`];
+    /// an explicit `D3d11` request fails the open instead.
     pub fn open(path: &Path, options: ReaderOptions) -> Result<Self, MediaError> {
-        let input = ffi::Input::open(path, options.stream_index, options.decoder_threads)?;
+        let mut input = ffi::Input::open(path, options.stream_index, options.decoder_threads)?;
         let source = super::probe::describe(&input, path)?;
         let size = source
             .analysis_size_with_height(options.analysis_height)
@@ -170,11 +206,43 @@ impl FrameReader {
                 source_height: source.height,
                 reason: error.to_string(),
             })?;
+
+        let mut gpu_fallback = None;
+        let mut gpu_backend = "cpu";
+        if options.gpu != GpuMode::Off {
+            let attempt =
+                D3d11Filter::plan(source.width, source.height, size.width(), size.height())
+                    .and_then(|_| {
+                        ffi::Input::open_gpu(path, options.stream_index, options.decoder_threads)
+                            .map_err(|error| error.to_string())
+                    });
+            match attempt {
+                Ok(gpu_input) => {
+                    // The GPU input describes the same file and stream, so the
+                    // software probe stays authoritative for the run. The
+                    // filter itself is built from the first frame's own luma
+                    // depth, like the CPU resizer.
+                    drop(input);
+                    input = gpu_input;
+                    gpu_backend = "d3d11";
+                }
+                Err(reason) if options.gpu == GpuMode::Auto => {
+                    gpu_fallback = Some(reason);
+                }
+                Err(reason) => {
+                    return Err(MediaError::Decode {
+                        operation: "open the D3D11 backend",
+                        path: path.to_path_buf(),
+                        source: io::Error::other(reason),
+                    });
+                }
+            }
+        }
         let time_base = input.stream().time_base();
 
         Ok(Self {
             input,
-            resizer: None,
+            filter: None,
             path: path.to_path_buf(),
             source,
             size,
@@ -186,6 +254,8 @@ impl FrameReader {
             current: None,
             finished: false,
             producer: ProducerTimings::default(),
+            gpu_fallback,
+            gpu_backend,
         })
     }
 
@@ -225,6 +295,19 @@ impl FrameReader {
     /// for its producer. The numbers describe this reader's own frames only.
     pub fn producer_timings(&self) -> ProducerTimings {
         self.producer
+    }
+
+    /// The analysis-plane backend this run uses: `"cpu"` or `"d3d11"`.
+    pub fn gpu_backend(&self) -> &'static str {
+        self.gpu_backend
+    }
+
+    /// Why an `Auto` GPU attempt fell back to the CPU path, if it did.
+    ///
+    /// `None` on an unrequested GPU path, on a successful GPU run, and on an
+    /// explicit `D3d11` request (which fails the open instead).
+    pub fn gpu_fallback(&self) -> Option<&str> {
+        self.gpu_fallback.as_deref()
     }
 
     /// Reads the next complete frame into the reusable buffer.
@@ -289,39 +372,53 @@ impl FrameReader {
             });
         };
 
-        // The resizer is built from the first frame's own luma format, so the
-        // format that is resized is the one the decoder actually produced
+        // The filter is built from the first frame's own luma format, so the
+        // format that is filtered is the one the decoder actually produced
         // rather than what the container header promised. Every later frame is
         // checked against it: a midstream luma-format change would feed a
-        // plane of a different sample layout to a context built for the first
+        // plane of a different sample layout to a filter built for the first
         // format, so it is rejected like a size change rather than silently
         // rescaled.
         //
         // The fields are read individually rather than through a method, because
         // the frame borrows `self.input` for as long as it is alive; building
-        // and resizing borrow only `self.resizer` and `self.path`, disjoint
+        // and filtering borrow only `self.filter` and `self.path`, disjoint
         // fields, so the frame's borrow can stay live across them.
-        if self.resizer.is_none() {
+        if self.filter.is_none() {
             let size = self.size;
-            let resizer = build_resizer(width, height, luma_format, size).map_err(|error| {
-                MediaError::Decode {
-                    operation: "build the frame resizer",
-                    path: self.path.clone(),
-                    source: io::Error::other(error),
-                }
-            })?;
-            self.resizer = Some(resizer);
-        } else if self.resizer.as_ref().map(|resizer| resizer.source_format()) != Some(luma_format)
+            let filter = if frame.is_d3d11() {
+                PlaneFilter::D3d11(
+                    D3d11Filter::plan(width, height, size.width(), size.height()).map_err(
+                        |error| MediaError::Decode {
+                            operation: "plan the D3D11 analysis filter",
+                            path: self.path.clone(),
+                            source: io::Error::other(error),
+                        },
+                    )?,
+                )
+            } else {
+                let resizer = build_resizer(width, height, luma_format, size).map_err(|error| {
+                    MediaError::Decode {
+                        operation: "build the frame resizer",
+                        path: self.path.clone(),
+                        source: io::Error::other(error),
+                    }
+                })?;
+                PlaneFilter::Cpu(Box::new(resizer))
+            };
+            self.filter = Some(filter);
+        }
+        // The CPU filter pins the format it was built for; hardware frames
+        // track theirs inside the GPU filter.
+        if let Some(filter_format) = self.filter.as_ref().and_then(PlaneFilter::source_format)
+            && filter_format != luma_format
         {
             return Err(MediaError::Decode {
                 operation: "resize a frame whose pixel format changed",
                 path: self.path.clone(),
                 source: io::Error::other(format!(
-                    "the stream resized as {} but the decoder produced a frame in {}",
-                    self.resizer
-                        .as_ref()
-                        .map(|resizer| resizer.source_format().name())
-                        .unwrap_or_default(),
+                    "the stream filtered as {} but the decoder produced a frame in {}",
+                    filter_format.name(),
                     luma_format.name()
                 )),
             });
@@ -334,23 +431,37 @@ impl FrameReader {
         if luma.len() != pixels {
             luma.resize(pixels, 0);
         }
-        let resizer = self.resizer.as_mut().ok_or_else(|| MediaError::Decode {
+        let filter = self.filter.as_mut().ok_or_else(|| MediaError::Decode {
             operation: "resize a decoded frame",
             path: self.path.clone(),
-            source: io::Error::other("the resizer was not built"),
+            source: io::Error::other("the filter was not built"),
         })?;
         // Producer-side resize stage: one `Instant` pair around the existing
-        // swscale call and the `>> 8` reduction it feeds. The resizer's own
-        // work is not stamped; the frame borrow above keeps `self.input`
-        // claimed, and `self.producer` is a disjoint field.
+        // filter call. The frame borrow above keeps `self.input` claimed, and
+        // `self.producer` is a disjoint field.
         let resize_start = Instant::now();
-        resizer
-            .resize(frame.plane(), frame.stride(), luma)
-            .map_err(|error| MediaError::Decode {
-                operation: "resize a decoded frame",
-                path: self.path.clone(),
-                source: io::Error::other(error),
-            })?;
+        match filter {
+            PlaneFilter::Cpu(resizer) => {
+                resizer
+                    .resize(frame.plane(), frame.stride(), luma)
+                    .map_err(|error| MediaError::Decode {
+                        operation: "resize a decoded frame",
+                        path: self.path.clone(),
+                        source: io::Error::other(error),
+                    })?;
+            }
+            // Hardware frames carry no host plane; the D3D11 filter does its
+            // own format tracking and produces the analysis plane on the
+            // device.
+            PlaneFilter::D3d11(gpu) => {
+                gpu.filter(&frame, luma)
+                    .map_err(|error| MediaError::Decode {
+                        operation: "resize a decoded frame",
+                        path: self.path.clone(),
+                        source: io::Error::other(error),
+                    })?
+            }
+        }
         self.producer.resize += resize_start.elapsed();
 
         self.pending_pts = frame.pts();

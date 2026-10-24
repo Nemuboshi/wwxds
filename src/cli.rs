@@ -27,6 +27,12 @@ pub(crate) struct Cli {
     #[arg(long, value_name = "N")]
     pub(crate) decoder_threads: Option<u32>,
 
+    /// Analysis-plane backend: `off` decodes and filters on the CPU, `auto`
+    /// uses D3D11 hardware decode when the machine supports it and falls back
+    /// to `off` otherwise, `d3d11` requires the D3D11 backend.
+    #[arg(long, value_name = "MODE", default_value = "auto")]
+    pub(crate) gpu: String,
+
     /// Write stage timings to standard error after a successful run.
     #[arg(long)]
     pub(crate) stats: bool,
@@ -62,6 +68,12 @@ impl Cli {
             && threads == 0
         {
             return Err("--decoder-threads must be at least 1".to_owned());
+        }
+        if ihni::decode::GpuMode::parse(&self.gpu).is_none() {
+            return Err(format!(
+                "--gpu '{}' is not one of off, auto, d3d11",
+                self.gpu
+            ));
         }
         let output = self.output_path();
         if output == self.input {

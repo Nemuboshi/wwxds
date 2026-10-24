@@ -383,10 +383,14 @@ fn a_redirected_run_shows_progress_lines_before_the_completion_message() {
         "progress must not show a percentage or ETA: {stderr}"
     );
     let lines: Vec<&str> = stderr.lines().collect();
+    // A note about a backend fallback is a diagnostic that may precede the
+    // progress lines; the ordering claim is about progress and completion.
+    let first_progress = lines
+        .iter()
+        .find(|line| !line.starts_with("note:"))
+        .unwrap_or(&"");
     assert!(
-        lines
-            .first()
-            .is_some_and(|line| line.starts_with("progress frames=")),
+        first_progress.starts_with("progress frames="),
         "progress precedes the completion message: {stderr}"
     );
     assert!(

@@ -34,6 +34,7 @@ fn main() -> ExitCode {
         stream_index: cli.stream_index,
         analysis_height: cli.analysis_height,
         decoder_threads: cli.decoder_threads,
+        gpu: ihni::decode::GpuMode::parse(&cli.gpu).expect("validated above"),
         ..ihni::RunOptions::default()
     };
 
@@ -88,7 +89,7 @@ fn main() -> ExitCode {
             None => "n/a".to_owned(),
         };
         eprintln!(
-            "stats frames={} producer_decode_s={:.6} producer_resize_s={:.6} queue_wait_s={:.6} prepare_s={:.6} detect_s={:.6} total_s={:.6} fps={} analysis={}x{} mode=exact read_ahead={}",
+            "stats frames={} producer_decode_s={:.6} producer_resize_s={:.6} queue_wait_s={:.6} prepare_s={:.6} detect_s={:.6} total_s={:.6} fps={} analysis={}x{} mode=exact read_ahead={} backend={}",
             stats.frames,
             stats.producer_decode.as_secs_f64(),
             stats.producer_resize.as_secs_f64(),
@@ -100,6 +101,7 @@ fn main() -> ExitCode {
             summary.decode.analysis_size.width(),
             summary.decode.analysis_size.height(),
             stats.read_ahead,
+            stats.backend,
         );
     }
 

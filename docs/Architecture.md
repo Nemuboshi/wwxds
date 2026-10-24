@@ -135,7 +135,7 @@ All interactions with FFmpeg structures stay in `crates/ihni-media/csrc/ihni_ffm
   - Environment variable `FFMPEG_DIR` points to the static dev prefix.
   - `build.rs` compiles the C shim with the `cc` crate.
   - Static libraries linked: `avformat`, `avcodec`, `swresample`, `avutil`, `zlib`. swscale is no longer linked; the analysis-plane filter is the project's own integer code.
-  - Dynamic runtime: links dynamically with the system CRT (`VCRUNTIME140.dll`).
+  - Dynamic runtime: links dynamically with the system CRT (`VCRUNTIME140.dll`) and the D3D11 system DLLs (`d3d11.dll`, `dxgi.dll`, `d3dcompiler_47.dll`) that the GPU backend uses.
 - **Link Gate Verification**:
   - `scripts/check-link-gate.sh` inspects the release executable.
   - Rejects external FFmpeg dynamic DLL imports.
@@ -144,13 +144,11 @@ All interactions with FFmpeg structures stay in `crates/ihni-media/csrc/ihni_ffm
 
 ## 8. GPU Backends
 
-GPU acceleration is phased work inside `ihni-media`; the CPU path is always built and is the fallback. The three phases:
+GPU acceleration runs inside `ihni-media`; the CPU path is always built and is the fallback. The selected backend never changes the output bytes.
 
-1. **Phase 1 — Integer box filter on the CPU**: the analysis-plane filter of §4 replaces swscale, removing the dominant producer cost without any GPU dependency.
-2. **Phase 2 — CUDA backend**: on NVIDIA hardware, decoding (NVDEC), the box filter, and the detector's per-macroblock feature extraction run on the device; only per-macroblock statistics cross back to the host for the serial state machine. All CUDA access lives in the C shim, compiled by `nvcc`; a build without a CUDA toolkit produces the CPU-only binary.
-3. **Phase 3 — Vendor-neutral compute backend**: on integrated GPUs (shared memory), the CPU decodes and the device computes the box filter and feature extraction through a compute API. Adopted only if measured to beat the CPU path.
-
-- **Selection**: `--gpu auto|cuda|vulkan|off` with `auto` as the default; probing failure degrades to the CPU path with a note on standard error.
-- **Parity**: every backend produces the CPU implementation's bytes exactly (§4); results never depend on the selected backend.
-- **Data residency**: decoded frames stay in device memory across the decode → filter → feature stages whenever the backend allows it; a per-frame host round trip must be measured before it is accepted.
-- **Boundaries**: `ihni-core` stays device-agnostic and dependency-free; backend code never enters the root CLI beyond flag parsing.
+- **Backend**: D3D11. Hardware decoding (d3d11va) keeps every decoded frame in GPU memory as an NV12 or P010 texture; a compute shader in the C shim computes the whole-pixel box filter of §4 on the device; only the tight 8-bit analysis plane — a few hundred kilobytes per frame — is copied back to the host for the detector. There is no full-size frame round trip.
+- **Geometry coverage**: the shader covers whole-pixel downscales, which every default analysis size is (1080p sources map 3:1). Any other geometry, a missing Direct3D 11.3 device, or a decoder without d3d11va falls back to the CPU filter with the reason on standard error under `--gpu auto`.
+- **Selection**: `--gpu auto|d3d11|off`, with `auto` as the default. `auto` probes D3D11 and degrades silently with a note on standard error; `d3d11` fails the run when the backend is unavailable; `off` never touches the device. The `--stats` line reports the settled backend.
+- **Parity**: hardware decode output and shader output are pinned byte-for-byte against the CPU pipeline by the GPU integration tests (`crates/ihni-media/tests/gpu.rs`, `tests/gpu.rs`); results never depend on the selected backend.
+- **Placement**: all Direct3D and COM access lives in `csrc/ihni_ffmpeg.c`, including the compute shader source, which is compiled at run start with the system `d3dcompiler_47`. `ihni-core` stays device-agnostic; the root CLI only parses the flag.
+- **History and alternatives**: the original plan used CUDA with NVDEC, but the pinned FFmpeg build disables NVDEC and Vulkan, so the zero-copy design was re-based on the d3d11va support it ships with. CUDA becomes possible only with a rebuilt FFmpeg asset; a Vulkan path would add a dependency for the same coverage the D3D11 backend already provides on every vendor, integrated GPUs included (shared memory, no PCIe copy).
