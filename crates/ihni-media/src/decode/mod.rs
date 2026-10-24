@@ -9,7 +9,7 @@
 //! 1. [`probe`] selects one absolute stream index and records source metadata.
 //! 2. [`analysis::AnalysisSize`] derives the fixed analysis size for the run.
 //! 3. [`reader::FrameReader`] decodes complete frames in display order and
-//!    resamples luma to the 8-bit analysis plane through the linked libswscale
+//!    reduces luma to the 8-bit analysis plane with the integer box filter
 //!    ([`resize::FrameResizer`]).
 //! 4. [`overlap::FrameStream`] runs the reader on a producer thread so decoding
 //!    overlaps detection without changing the frame sequence.
@@ -34,7 +34,7 @@ use std::time::Duration;
 ///
 /// `decode` and `resize` are measured on the thread that runs the reader:
 /// `decode` is the time the linked libavcodec spent producing decoded frames,
-/// `resize` is the time the same thread spent scaling them into the analysis
+/// `resize` is the time the same thread spent filtering them into the analysis
 /// plane. They are independent of the consumer's wait for a prepared frame
 /// (`ihni::RunStats::queue_wait`) and they overlap it, so the two must never
 /// be added to each other as if they were sequential, and the producer stages

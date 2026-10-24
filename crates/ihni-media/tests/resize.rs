@@ -1,32 +1,22 @@
-//! The production resize path, called directly.
+//! The production analysis-plane filter, called directly.
 //!
 //! This runs the [`FrameResizer`] that `FrameReader` uses, as the direct link
 //! gate for the production path: every resize entry point the crate exposes
-//! goes through the statically linked libswscale, and the retired Rust
-//! resampler and its parity oracle were removed once the migration was
-//! verified.
+//! goes through the integer box filter of `docs/Architecture.md` §4.
 //!
-//! The asserted bytes are real `sws_scale` output through the C shim, checked
-//! against the two arithmetic identities `docs/Architecture.md` records for this
-//! configuration:
+//! The asserted identities follow from the filter definition, not from a
+//! library:
 //!
-//! - identity geometry promotes with `(v << (16 - depth)) | (v >> (2 * depth - 16))`,
-//!   so after `>> 8` an 8-bit sample returns to `v` exactly, and a 10-bit
-//!   sample to `((v << 6) | (v >> 4)) >> 8`;
-//! - a constant plane scales to that same constant (the committed swscale
-//!   fixtures `const-zero-96x64-160x90`, `const-max-96x64-160x90`, and
-//!   `tenbe-const-max-96x64-160x90` record swscale doing exactly this).
+//! - identity geometry returns every 8-bit sample unchanged, and a 10-bit
+//!   sample reduced by `>> 2` of its exact value;
+//! - a constant plane scales to that same constant in every geometry, because
+//!   the weights of one output pixel sum to the source area it covers.
 //!
 //! Filtered-path equality on real media stays with `tests/analysis_digests.rs`,
 //! which digests every frame of every fixture through this same path.
 
 use ihni_media::LumaFormat;
 use ihni_media::decode::FrameResizer;
-
-/// Rounds up to a multiple of 64, the alignment the resize destination uses.
-fn align64(value: usize) -> usize {
-    (value + 63) & !63
-}
 
 /// Builds a gray8 plane at a deliberately padded stride, so a resizer that
 /// assumed `stride == width` cannot pass.
@@ -73,10 +63,15 @@ fn plane10(
     (plane, stride)
 }
 
+/// Rounds up to a multiple of 64, keeping the padded-stride coverage honest.
+fn align64(value: usize) -> usize {
+    (value + 63) & !63
+}
+
 #[test]
 fn identity_geometry_round_trips_an_8_bit_ramp_exactly() {
-    // The recorded identity branch: swscale promotes an 8-bit sample with
-    // `v * 257`, and `>> 8` gives back `v`. Any value, not just constants.
+    // Identity geometry: each output pixel covers exactly its source pixel,
+    // so the rounded mean is the sample itself. Any value, not just constants.
     let (plane, stride) = plane8(96, 64, 17, |x, y| ((x * 7 + y * 13) % 256) as u8);
     let mut resizer =
         FrameResizer::open(96, 64, LumaFormat::Gray8, 96, 64).expect("a supported geometry");
@@ -96,10 +91,10 @@ fn identity_geometry_round_trips_an_8_bit_ramp_exactly() {
 }
 
 #[test]
-fn identity_geometry_round_trips_10_bit_in_both_endiannesses() {
-    // The documented 10-bit promotion: `(v << 6) | (v >> 4)`, reduced by
-    // `>> 8`. This is floor-like, not `v / 4`: the test restates the
-    // documented expression independently of the implementation.
+fn identity_geometry_reduces_10_bit_samples_by_two_bits() {
+    // Identity geometry on a 10-bit source: the mean is the sample exactly,
+    // and the documented reduction is `>> 2` of that value. This is a plain
+    // two-bit shift, not a rescale to the full 8-bit range.
     for format in [LumaFormat::Gray10Le, LumaFormat::Gray10Be] {
         let (plane, stride) = plane10(96, 64, format, |x, y| ((x * 11 + y * 23) % 1024) as u16);
         let mut resizer = FrameResizer::open(96, 64, format, 96, 64).expect("a supported geometry");
@@ -110,11 +105,10 @@ fn identity_geometry_round_trips_10_bit_in_both_endiannesses() {
         for y in 0..64 {
             for x in 0..96 {
                 let v = (x * 11 + y * 23) % 1024;
-                let promoted = ((v << 6) | (v >> 4)) >> 8;
                 assert_eq!(
                     out[y * 96 + x] as usize,
-                    promoted,
-                    "identity {name} pixel ({x},{y}) disagrees with the documented promotion",
+                    v >> 2,
+                    "identity {name} pixel ({x},{y}) disagrees with the documented reduction",
                     name = format.name()
                 );
             }
@@ -124,10 +118,10 @@ fn identity_geometry_round_trips_10_bit_in_both_endiannesses() {
 
 #[test]
 fn constant_planes_scale_to_the_same_constant() {
-    // A constant plane must survive the bicubic filter unchanged, in both
-    // directions; the committed swscale fixtures record exactly this result
-    // (all-zero and all-255 outputs). A mis-normalized coefficient row breaks
-    // this first.
+    // A constant plane must survive the filter unchanged, in both directions:
+    // the weights of one output pixel sum to the source area it covers, so
+    // the rounded mean of a constant is that constant. A mis-normalized
+    // weight row breaks this first.
     for (value, label) in [(0u8, "zero"), (255u8, "maximum")] {
         let (plane, stride) = plane8(96, 64, 64, |_, _| value);
         for (dst_w, dst_h) in [(160usize, 90usize), (48usize, 32usize)] {
@@ -161,8 +155,8 @@ fn constant_planes_scale_to_the_same_constant() {
 
 #[test]
 fn a_short_destination_is_rejected_before_any_write() {
-    // The resizer must check the caller's buffer instead of letting swscale
-    // write past its end.
+    // The resizer must check the caller's buffer instead of writing past its
+    // end.
     let (plane, stride) = plane8(96, 64, 0, |_, _| 32);
     let mut resizer = FrameResizer::open(96, 64, LumaFormat::Gray8, 160, 90).expect("opens");
     let mut out = vec![0u8; 160 * 90 - 1];
@@ -181,8 +175,8 @@ fn a_short_destination_is_rejected_before_any_write() {
 
 #[test]
 fn a_short_source_plane_is_rejected() {
-    // `stride * height` must fit inside the source slice before the shim
-    // receives the pointer.
+    // `stride * height` must fit inside the source slice before any row is
+    // read.
     let mut plane = vec![0u8; 96 * 64];
     plane.fill(200);
     let mut resizer = FrameResizer::open(96, 64, LumaFormat::Gray8, 48, 32).expect("opens");
@@ -202,7 +196,7 @@ fn a_short_source_plane_is_rejected() {
 #[test]
 fn a_stride_smaller_than_one_row_is_rejected() {
     // 10-bit rows need `width * 2` bytes; a stride below that cannot address
-    // the plane and must not reach the shim.
+    // the plane.
     let (plane, _) = plane10(96, 64, LumaFormat::Gray10Le, |_, _| 512);
     let mut resizer = FrameResizer::open(96, 64, LumaFormat::Gray10Le, 48, 32).expect("opens");
     let mut out = vec![0u8; 48 * 32];

@@ -1,11 +1,10 @@
-//! The luma sample layout the decode and resize path accepts.
+//! The luma sample layout the decode and analysis-plane path accepts.
 //!
-//! This type is media's own since the production resize moved to libswscale.
-//! The variants name the *gray* equivalent of a source depth, which is the
-//! format `extractplanes=y` produces and the resizer is fed. They are not
-//! decoded-frame formats: a decoded `yuv420p10le` frame is handed to
-//! the resizer as [`LumaFormat::Gray10Le`], because only its luma plane is
-//! read.
+//! This type is media's own. The variants name the *gray* equivalent of a
+//! source depth, which is what the decoder's luma plane is reported as and
+//! the analysis filter is fed. They are not decoded-frame formats: a decoded
+//! `yuv420p10le` frame is handed to the filter as
+//! [`LumaFormat::Gray10Le`], because only its luma plane is read.
 
 /// The sample layout of a luma plane.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

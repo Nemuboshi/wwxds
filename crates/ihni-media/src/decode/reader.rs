@@ -4,12 +4,10 @@
 //! libavformat and libavcodec and returns the decoder's luma plane in
 //! presentation order. No child process and no pipe is involved.
 //!
-//! The plane is then resampled to the fixed analysis size by
-//! [`FrameResizer`](super::resize::FrameResizer), which drives the linked
-//! libswscale through the C shim: one `SWS_BICUBIC` context writing
-//! `gray16le`, reduced per sample by `>> 8` to the 8-bit analysis plane. The
-//! bytes are the bytes swscale produces; see
-//! [docs/Architecture.md](../../../../docs/Architecture.md).
+//! The plane is then reduced to the fixed analysis size by
+//! [`FrameResizer`](super::resize::FrameResizer), the project's own integer
+//! box filter (`docs/Architecture.md`, §4): exact integer area averages,
+//! rounded once, with no intermediate plane and no library scaler.
 //!
 //! Time stamps come from the decoder. The default mode still reports none: a
 //! source time stamp is only reported when the caller asks for it explicitly.
@@ -329,9 +327,9 @@ impl FrameReader {
             });
         }
 
-        // swscale writes the 16-bit plane and the resizer reduces it per
-        // sample by `>> 8` into the tight analysis plane, so the 8-bit bytes
-        // are exactly the high bytes of the bytes swscale produced.
+        // The filter writes the tight analysis plane directly from the
+        // decoded luma, so the detector's bytes are exactly the filter's
+        // output.
         let pixels = self.size.luma_bytes();
         if luma.len() != pixels {
             luma.resize(pixels, 0);

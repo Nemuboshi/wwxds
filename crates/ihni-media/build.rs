@@ -15,9 +15,9 @@ use std::path::{Path, PathBuf};
 /// FFmpeg libraries this crate uses, in no particular order.
 ///
 /// `avcodec` depends on `swresample`, so it is linked even though the shim
-/// never calls it directly. `swscale` is the production resize path: the shim's
-/// scaler entry points compile and link in every build.
-const FFMPEG_LIBS: [&str; 5] = ["avformat", "avcodec", "swscale", "swresample", "avutil"];
+/// never calls it directly. The analysis-plane filter is the project's own
+/// integer code; swscale is deliberately not linked.
+const FFMPEG_LIBS: [&str; 4] = ["avformat", "avcodec", "swresample", "avutil"];
 
 /// System libraries FFmpeg's static archives reference on Windows.
 ///
@@ -54,9 +54,6 @@ fn main() {
         "libavutil/avutil.h",
         "libavcodec/avcodec.h",
         "libavformat/avformat.h",
-        // The resize path is compiled in every build, so its header is always
-        // required.
-        "libswscale/swscale.h",
     ] {
         assert!(
             include.join(header).is_file(),

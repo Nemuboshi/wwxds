@@ -33,19 +33,6 @@ const STATUS_STREAM_NOT_FOUND: c_int = 2;
 const STATUS_NO_VIDEO: c_int = 3;
 const STATUS_CODEC: c_int = 4;
 
-/// The shim code for a luma format, matching the `IHNI_LUMA_*` macros.
-///
-/// The codes are the shim's, not libav `AVPixelFormat` values: the mapping
-/// between a decoded frame and a scaler source format stays in C, so no libav
-/// enum constant is mirrored in Rust. Every build that resizes uses this.
-fn luma_code(format: LumaFormat) -> c_int {
-    match format {
-        LumaFormat::Gray8 => 0,
-        LumaFormat::Gray10Le => 1,
-        LumaFormat::Gray10Be => 2,
-    }
-}
-
 /// The luma format a shim code names, or `None` for the unsupported marker.
 fn luma_format_from_code(code: c_int) -> Option<LumaFormat> {
     match code {
@@ -63,14 +50,6 @@ const TEXT_BUFFER: usize = 8193;
 /// Opaque input handle owned by `ihni_input_open`.
 #[repr(C)]
 pub(crate) struct IhniInput {
-    _private: [u8; 0],
-}
-
-/// Opaque scaler handle owned by `ihni_scaler_open`.
-///
-/// The production resize path builds one per run.
-#[repr(C)]
-pub(crate) struct IhniScaler {
     _private: [u8; 0],
 }
 
@@ -224,28 +203,6 @@ unsafe extern "C" {
     ) -> c_int;
 
     fn ihni_input_close(input: *mut IhniInput);
-
-    fn ihni_scaler_open(
-        src_width: c_int,
-        src_height: c_int,
-        src_format: c_int,
-        dst_width: c_int,
-        dst_height: c_int,
-        threads: c_int,
-        out: *mut *mut IhniScaler,
-        err: *mut c_char,
-        errlen: usize,
-    ) -> c_int;
-
-    fn ihni_scaler_scale(
-        scaler: *mut IhniScaler,
-        src: *const u8,
-        src_stride: c_int,
-        dst: *mut u8,
-        dst_stride: c_int,
-    ) -> c_int;
-
-    fn ihni_scaler_close(scaler: *mut IhniScaler);
 }
 
 static INIT: Once = Once::new();
@@ -560,110 +517,6 @@ impl FrameRef<'_> {
     pub(crate) fn luma_format(&self) -> Option<LumaFormat> {
         let code = self.view.luma_pixel_format;
         luma_format_supported(code).then(|| luma_format_from_code(code))?
-    }
-}
-
-/// An swscale context for one source format and one target size.
-///
-/// The production resize path holds one per run; `scale` writes the caller's
-/// 16-bit gray destination, and the caller reduces it to 8-bit samples.
-pub(crate) struct Scaler {
-    raw: NonNull<IhniScaler>,
-}
-
-// SAFETY: an swscale context holds no shared state and is not cloned: it is
-// built by one reader (or one parity harness) for its own use, and `scale`
-// takes it by exclusive reference, so only one thread can be inside it at a
-// time.
-unsafe impl Send for Scaler {}
-
-impl Scaler {
-    /// Builds a bicubic scaler that writes 16-bit gray.
-    ///
-    /// `threads` is the scaler's own worker count; zero lets swscale choose.
-    /// The returned message is the shim's own text; the caller adds whatever
-    /// context it has, because a scaling context knows nothing about the input
-    /// file it was built for.
-    pub(crate) fn open(
-        src_width: u32,
-        src_height: u32,
-        src_format: LumaFormat,
-        dst_width: u32,
-        dst_height: u32,
-        threads: u32,
-    ) -> Result<Self, String> {
-        init();
-        let mut raw: *mut IhniScaler = ptr::null_mut();
-        let mut error = vec![0u8; TEXT_BUFFER];
-        // SAFETY: every dimension is a plain integer, `raw` and `error` are
-        // writable, and on success the shim returns a handle this function then
-        // owns.
-        let status = unsafe {
-            ihni_scaler_open(
-                i32::try_from(src_width).unwrap_or(i32::MAX),
-                i32::try_from(src_height).unwrap_or(i32::MAX),
-                luma_code(src_format),
-                i32::try_from(dst_width).unwrap_or(i32::MAX),
-                i32::try_from(dst_height).unwrap_or(i32::MAX),
-                i32::try_from(threads).unwrap_or(i32::MAX),
-                &mut raw,
-                error.as_mut_ptr().cast::<c_char>(),
-                TEXT_BUFFER,
-            )
-        };
-        if status != 0 {
-            let message = error_text(&error);
-            return Err(if message.is_empty() {
-                "the scaler reported no reason".to_owned()
-            } else {
-                message
-            });
-        }
-        NonNull::new(raw)
-            .map(|raw| Self { raw })
-            .ok_or_else(|| "the scaler returned no handle".to_owned())
-    }
-
-    /// Scales one plane into a 16-bit gray destination.
-    ///
-    /// `source` must hold at least `source_stride * height` bytes for the height
-    /// the scaler was built with, and `target` at least
-    /// `target_stride * target_height`.
-    pub(crate) fn scale(
-        &mut self,
-        source: &[u8],
-        source_stride: usize,
-        target: &mut [u8],
-        target_stride: usize,
-    ) -> Result<(), String> {
-        // SAFETY: both slices are live for the call, the strides come from the
-        // frame and the reusable target buffer, and the destination is writable.
-        let status = unsafe {
-            ihni_scaler_scale(
-                self.raw.as_ptr(),
-                source.as_ptr(),
-                i32::try_from(source_stride).unwrap_or(i32::MAX),
-                target.as_mut_ptr(),
-                i32::try_from(target_stride).unwrap_or(i32::MAX),
-            )
-        };
-        if status != 0 {
-            let diagnostic = take_diagnostic();
-            return Err(if diagnostic.is_empty() {
-                "the scaler rejected the frame".to_owned()
-            } else {
-                diagnostic
-            });
-        }
-        Ok(())
-    }
-}
-
-impl Drop for Scaler {
-    fn drop(&mut self) {
-        // SAFETY: `raw` came from `ihni_scaler_open` and is closed exactly once,
-        // here.
-        unsafe { ihni_scaler_close(self.raw.as_ptr()) };
     }
 }
 

@@ -127,6 +127,26 @@ stats frames=2879 producer_decode_s=2.902 producer_resize_s=7.287 queue_wait_s=8
 
 - **Parity**: Scaler outputs identical FNV-1a digests (`d170ba72a6f80fb5`) across thread counts 1 through 8.
 
+### 4.6 Integer box analysis-plane filter (swscale removal)
+- **Change**: Replaced the swscale `SWS_BICUBIC` + `gray16le >> 8` producer path with the project's own integer box (area-average) filter (`docs/Architecture.md` §4). The filter runs as two separable passes over a reused `u32` intermediate; whole-pixel downscales (every default analysis size) take an exact fast path with an SSE2 row-sum kernel on x86-64 and a precomputed magic multiplier for the per-pixel division. swscale is no longer linked.
+- **Motivation**: `producer_resize` was the dominant producer stage (§3); the filter replacement is the CPU-side phase of the GPU plan (`docs/Architecture.md` §8).
+- **Parity evidence**:
+  - Per-frame analysis digests on all nine `m1-fixtures` corpus inputs are identical to the recorded swscale lists (both heights); the committed digest lists are unchanged.
+  - Boundary lists are identical to the swscale baseline on all nine corpus inputs and on both 1080p benchmark clips.
+  - The regenerated `resize` fixtures are deterministic across runs; the committed generator is `examples/gen_resize_fixtures`.
+- **Filter micro-benchmark** (`examples/bench_resize`, 1080p source, 640x360 analysis, three runs, this machine):
+  - gray8: 466–644 µs per frame
+  - gray10le: 826–865 µs per frame
+  - Reference swscale point: ~1.67 ms per frame at 8 decoder+scaler threads (§3-era measurement on the recorded hardware; not re-run in isolation).
+- **End-to-end A/B, interleaved** (720-frame 1080p H.264 8-bit clip, default settings, three pairs, this machine):
+
+| Build | `producer_resize_s` (median) | `total_s` (median) | FPS (median) |
+| :--- | ---: | ---: | ---: |
+| swscale bicubic | 1.392 s | 1.661 s | 433 |
+| integer box filter | 1.197 s | 1.457 s | 494 |
+
+- **Contention finding**: with `--decoder-threads 1`, the filter's pipeline stage drops to 0.617 s — matching the micro-benchmark — because FFmpeg frame-threading decodes the next frame concurrently with the resize of the current one. The remaining gap between micro-benchmark and pipeline time is that documented overlap, not filter cost.
+
 ---
 
 ## 5. Rejected or Deferred Approaches
@@ -149,6 +169,7 @@ stats frames=2879 producer_decode_s=2.902 producer_resize_s=7.287 queue_wait_s=8
 | **In-process decoding and overlap** | `ihni-media` | Wall time: 25.4 s → 22.8 s (1080p) | 39/46/50 boundaries unchanged; identical digests. |
 | **Producer/consumer stage split** | `ihni` CLI | Detailed timing visibility | Zero measurement overhead; no output changes. |
 | **swscale dynamic frame API** | `ihni-media` | ~10% faster on 8-bit inputs | FNV-1a digests match across all thread counts. |
+| **Integer box analysis filter** | `ihni-media` | `producer_resize_s`: 1.39 s → 1.20 s (§4.6) | Digests and boundaries identical to swscale baseline on the corpus. |
 | **SSE2 `sad16` SIMD kernel** | `ihni-core` | Replay: 35.1 ms → 22.3 ms | Golden parity verified; identical boundary lists. |
 | **SSE2 `dev16` SIMD kernel** | `ihni-core` | Replay: 22.3 ms → 18.7 ms | 149 unit and integration tests pass. |
 

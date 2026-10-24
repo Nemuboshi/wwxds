@@ -1,19 +1,15 @@
 #!/usr/bin/env bash
-# Check that the release binary links no FFmpeg DLL, and that it does contain
-# the statically linked swscale.
+# Check that the release binary links no FFmpeg DLL, and that it embeds no
+# swscale code.
 #
 # The FFmpeg libraries are static, so a DLL import would mean a shared prefix was
-# linked by mistake; that stays a hard failure for every FFmpeg library
-# including swscale.
+# linked by mistake; that stays a hard failure for every FFmpeg library.
 #
-# swscale is the only resize path since the migration, and the parity-oracle
-# feature and the retired Rust resampler were removed with task 5, so every
-# release binary must embed swscale code: the image probe is now a hard
-# assertion, not a report. The oracle build used to be the one configuration
-# that could produce a binary whose resize path was the Rust scaler, so the
-# probe only reported; with the oracle gone there is no supported build that
-# legitimately lacks swscale. The check that tests cannot see — accidental
-# dynamic dependencies — stays here too.
+# The analysis-plane filter is the project's own integer box average, so a
+# release binary must NOT contain swscale: the library is no longer linked, and
+# an accidental swscale dependency means the build pulled in code the filter
+# contract does not use. The image probe is a hard assertion, and the check
+# that tests cannot see — accidental dynamic dependencies — stays here too.
 #
 # Usage: scripts/check-link-gate.sh [path-to-binary]
 #
@@ -74,26 +70,23 @@ if printf '%s\n' "$dependents" | grep -Eiq 'avcodec|avformat|avutil|swscale|swre
     status=1
 fi
 
-symbols=$(MSYS2_ARG_CONV_EXCL='*' "$dumpbin" -symbols "$binary" 2>&1)
-swscale_symbols=$(printf '%s\n' "$symbols" | grep -ci 'sws_' || true)
 # A release MSVC image carries no COFF symbol table (the symbols live in the
-# accompanying .pdb), so the symbol grep reads zero on such a build whatever
-# was linked. The embedded text is the probe that actually distinguishes:
-# swscale's own build paths and log text appear in every image that links it,
-# and every release binary must now link it, so zero matches is a failure.
+# accompanying .pdb), so a symbol grep reads zero on such a build whatever was
+# linked. The embedded text is the probe that actually distinguishes:
+# swscale's own build paths and log text appear in every image that links it.
 # The probe greps the image bytes directly with grep (-a: treat binary as
 # text; -o: one match per line, so the second grep counts occurrences and
 # not merely lines) because Git-for-Windows bash does not ship `strings` on
 # GitHub runners, while GNU grep is guaranteed there and in this repository's
 # documented bash toolchain.
 swscale_matches=$(LC_ALL=C grep -ao 'sws_[A-Za-z0-9_]*\|swscale' "$binary" | grep -c . || true)
-echo "check-link-gate: swscale symbols in $binary: $swscale_symbols (image matches: $swscale_matches)"
-if [ "$swscale_matches" -eq 0 ]; then
-    echo "check-link-gate: the binary contains no swscale code; the production resize path requires it statically linked" >&2
+echo "check-link-gate: swscale image matches in $binary: $swscale_matches"
+if [ "$swscale_matches" -ne 0 ]; then
+    echo "check-link-gate: the binary contains swscale code; the analysis filter must not link it" >&2
     status=1
 fi
 
 if [ "$status" -eq 0 ]; then
-    echo "check-link-gate: pass (no FFmpeg DLL; swscale embedded: $swscale_matches image matches)"
+    echo "check-link-gate: pass (no FFmpeg DLL; no swscale code)"
 fi
 exit "$status"

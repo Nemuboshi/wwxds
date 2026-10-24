@@ -18,7 +18,6 @@
 #include <libavutil/imgutils.h>
 #include <libavutil/opt.h>
 #include <libavutil/pixdesc.h>
-#include <libswscale/swscale.h>
 
 #include <stdarg.h>
 #include <stddef.h>
@@ -93,21 +92,10 @@ typedef struct ihni_input {
 } ihni_input;
 
 /*
- * The production scaler: one swscale context for one source and one target.
- *
- * The two AVFrames carry the geometry and the per-frame buffer pointers into
- * the new (dynamic) swscale API. Their `data`/`linesize` are rewritten on every
- * call to point at the caller's planes, so the scaler never owns or copies a
- * frame buffer.
+ * The production analysis-plane filter is the project's own integer box
+ * average in Rust; this shim only decodes.
  */
-typedef struct ihni_scaler {
-    struct SwsContext *context;
-    AVFrame *source_frame;
-    AVFrame *target_frame;
-} ihni_scaler;
-
 void ihni_input_close(ihni_input *in);
-void ihni_scaler_close(ihni_scaler *scaler);
 
 /* ------------------------------------------------------------------------- */
 /* Diagnostics                                                               */
@@ -314,25 +302,17 @@ static int ihni_luma_format(enum AVPixelFormat format)
     return IHNI_LUMA_UNSUPPORTED;
 }
 
-/* The libav pixel format a luma code names, or AV_PIX_FMT_NONE. */
-static enum AVPixelFormat ihni_luma_to_pixel_format(int luma_format)
+/* Reports whether a luma format from ihni_luma_format can be prepared. */
+int ihni_luma_format_supported(int luma_format)
 {
     switch (luma_format) {
     case IHNI_LUMA_GRAY8:
-        return AV_PIX_FMT_GRAY8;
     case IHNI_LUMA_GRAY10LE:
-        return AV_PIX_FMT_GRAY10LE;
     case IHNI_LUMA_GRAY10BE:
-        return AV_PIX_FMT_GRAY10BE;
+        return 1;
     default:
-        return AV_PIX_FMT_NONE;
+        return 0;
     }
-}
-
-/* Reports whether a luma format from ihni_luma_format can be scaled. */
-int ihni_luma_format_supported(int luma_format)
-{
-    return ihni_luma_to_pixel_format(luma_format) != AV_PIX_FMT_NONE;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -585,121 +565,4 @@ void ihni_input_close(ihni_input *in)
         avformat_close_input(&in->format);
     }
     free(in);
-}
-
-/* ------------------------------------------------------------------------- */
-/* Scaler                                                                    */
-/* ------------------------------------------------------------------------- */
-
-int ihni_scaler_open(int src_width, int src_height, int src_format,
-                     int dst_width, int dst_height, int threads,
-                     ihni_scaler **out, char *err, size_t errlen)
-{
-    *out = NULL;
-    ihni_ffmpeg_init();
-    /*
-     * The diagnostics of the reader on this thread are not cleared here: the
-     * scaler is built while a run is already in progress, and a container that
-     * reported a problem must keep reporting it.
-     */
-
-    enum AVPixelFormat source = ihni_luma_to_pixel_format(src_format);
-    if (source == AV_PIX_FMT_NONE) {
-        ihni_set_error(err, errlen, "the scaler was given an unsupported luma "
-                                    "format");
-        return -1;
-    }
-    if (threads < 0) {
-        ihni_set_error(err, errlen, "the scaler was given a negative thread "
-                                    "count");
-        return -1;
-    }
-
-    ihni_scaler *scaler = calloc(1, sizeof(*scaler));
-    if (scaler == NULL) {
-        ihni_set_error(err, errlen, "cannot allocate the scaler");
-        return -1;
-    }
-
-    /*
-     * The new API in dynamic mode: the context is allocated but NOT
-     * initialised, because the geometry and formats arrive with each frame.
-     * `sws_scale_frame` configures itself from the first frame and reuses that
-     * configuration while the frames keep the same shape. This is the only
-     * mode in which `SwsContext.threads` takes effect: the stateful legacy
-     * `sws_getContext`/`sws_scale` pair always implies SWS_BACKEND_LEGACY and
-     * silently ignores the thread count.
-     */
-    scaler->context = sws_alloc_context();
-    if (scaler->context == NULL) {
-        ihni_error_with_diagnostic(err, errlen,
-                                   "cannot allocate the scaling context");
-        free(scaler);
-        return -1;
-    }
-    if (av_opt_set_int(scaler->context, "threads", threads, 0) != 0 ||
-        av_opt_set_int(scaler->context, "sws_flags", SWS_BICUBIC, 0) != 0) {
-        ihni_set_error(err, errlen,
-                       "cannot configure the scaling context");
-        sws_freeContext(scaler->context);
-        free(scaler);
-        return -1;
-    }
-
-    scaler->source_frame = av_frame_alloc();
-    scaler->target_frame = av_frame_alloc();
-    if (scaler->source_frame == NULL || scaler->target_frame == NULL) {
-        ihni_set_error(err, errlen, "cannot allocate the scaler's frames");
-        ihni_scaler_close(scaler);
-        return -1;
-    }
-    scaler->source_frame->format = source;
-    scaler->source_frame->width = src_width;
-    scaler->source_frame->height = src_height;
-    scaler->target_frame->format = AV_PIX_FMT_GRAY16LE;
-    scaler->target_frame->width = dst_width;
-    scaler->target_frame->height = dst_height;
-
-    *out = scaler;
-    return 0;
-}
-
-int ihni_scaler_scale(ihni_scaler *scaler, const uint8_t *src, int src_stride,
-                      uint8_t *dst, int dst_stride)
-{
-    /*
-     * Both frames borrow the caller's buffers for this call. Neither frame is
-     * reference counted and nothing is written back, so the pointers are
-     * restored to NULL on the way out: a stale pointer left in the struct
-     * would outlive the slice it came from.
-     */
-    scaler->source_frame->data[0] = (uint8_t *)src;
-    scaler->source_frame->linesize[0] = src_stride;
-    scaler->target_frame->data[0] = dst;
-    scaler->target_frame->linesize[0] = dst_stride;
-
-    int written = sws_scale_frame(scaler->context, scaler->target_frame,
-                                  scaler->source_frame);
-
-    scaler->source_frame->data[0] = NULL;
-    scaler->source_frame->linesize[0] = 0;
-    scaler->target_frame->data[0] = NULL;
-    scaler->target_frame->linesize[0] = 0;
-
-    if (written < 0) {
-        ihni_log_error_code("scaling a frame", written);
-        return -1;
-    }
-    return 0;
-}
-
-void ihni_scaler_close(ihni_scaler *scaler)
-{
-    if (scaler == NULL) {
-        return;
-    }
-    av_frame_free(&scaler->source_frame);
-    av_frame_free(&scaler->target_frame);
-    sws_freeContext(scaler->context);
-    free(scaler);
 }
