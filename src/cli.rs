@@ -21,9 +21,8 @@ pub(crate) struct Cli {
     pub(crate) stream_index: Option<u32>,
 
     /// Target analysis height in pixels. The source is divided by the
-    /// smallest integer factor that reaches it, or by its smallest common
-    /// factor above one when none does; only a source with no common factor
-    /// is analyzed natively.
+    /// smallest integer factor landing within five sixths of the target,
+    /// else by the factor closest to it from above, else analyzed natively.
     #[arg(long, value_name = "PIXELS")]
     pub(crate) analysis_height: Option<u32>,
 

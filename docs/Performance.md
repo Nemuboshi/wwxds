@@ -88,12 +88,11 @@ CUDA zero-copy path; integrated GPUs are covered by the same backend.
   the CPU filter. Requires Direct3D 11.3.
 
 ### 4.6 Integer-scale analysis sizes; fractional geometries removed
-- **Change**: the analysis size is now the source divided by the smallest
-  integer factor that brings the height to the target (360) or below; a
-  source the factor cannot reach is still divided by its smallest common
-  factor above one, and only a source with no common factor is analyzed
-  natively — never upscaled or fractionally scaled (`docs/Architecture.md`
-  §4). The filter's fractional
+- **Change**: the analysis size is now the source divided by an integer
+  factor that lands the height in the window 300 to 360 (five sixths of the
+  target to the target); a source no factor lands there is analyzed at the
+  plane closest to the target from above, or natively when none exists —
+  never upscaled or fractionally scaled (`docs/Architecture.md` §4). The filter's fractional
   coverage path — weight tables, 64-bit accumulators, a general vertical
   pass — is deleted, and the D3D11 shader now covers every geometry a run
   can have.
@@ -101,10 +100,11 @@ CUDA zero-copy path; integrated GPUs are covered by the same backend.
   Whole-pixel-only scaling keeps the two backends on one arithmetic and
   removes half the filter code.
 - **Behavior changes**: non-standard sources change analysis size — 720x576:
-  452x360 → 360x288; 960x432: 800x360 → 480x216; 3840x2160: 640x360 →
-  512x270 (the native area exceeds the pixel cap). Sources already at or
-  below the 360 target — the whole m1 corpus — are analyzed natively instead
-  of upscaled.
+  452x360 → native 720x576; 960x432: 800x360 → native 960x432; 854x480:
+  fractional → native 854x480; 1024x768: fractional → 512x384; 4096x2160:
+  640x360 → 1024x540 (the native area exceeds the pixel cap). Sources
+  already at or below the 360 target — the whole m1 corpus — are analyzed
+  natively instead of upscaled.
 - **Parity evidence**: the committed analysis digests were regenerated
   through `examples/digest` (the corpus now digests at native sizes); the
   native digests are unchanged except `odd-97x65`, whose old "native" row

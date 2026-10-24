@@ -1,11 +1,12 @@
 //! The fixed analysis size for one run.
 //!
 //! The detector compares blocks at one analysis size. The size is the source
-//! divided by an integer scale factor, so every analysis geometry is an exact
-//! whole-pixel block map of the source — the shape the CPU filter and the
-//! D3D11 shader both compute. The default target height is 360; the caller
-//! can override it. The bounds are reference safety limits, not accuracy
-//! parameters.
+//! divided by an integer scale factor chosen to land near the target height
+//! (360 by default): at or a little below it, else a little above it, and
+//! never far below — a landing under five sixths of the target is treated as
+//! a miss. Every analysis geometry is an exact whole-pixel block map of the
+//! source, the shape the CPU filter and the D3D11 shader both compute. The
+//! bounds are reference safety limits, not accuracy parameters.
 
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
@@ -38,15 +39,21 @@ impl AnalysisSize {
 
     /// Derives the analysis size for a source size at a chosen target height.
     ///
-    /// The scale factor is the smallest integer that divides both source
-    /// dimensions and brings the height to `target_height` or below; the
-    /// analysis size is the source divided by it. A source already at or
-    /// below the target height is analyzed natively. A source no divisor
-    /// brings to the target is still divided by its smallest common factor
-    /// above one — the analysis plane is never larger than the source and
-    /// never fractional — and only a source whose dimensions share no factor
-    /// above one is analyzed natively. Every result is checked against the
-    /// detector bounds; a source no valid factor exists for is an error.
+    /// Scaling exists to speed the detector up, so the derivation lands the
+    /// analysis height as close to the target as the divisor lattice allows,
+    /// and never below the landing window's floor: a landing under five
+    /// sixths of the target (300 for the default 360) sacrifices more
+    /// quality than the speedup is worth. In order:
+    ///
+    /// 1. the smallest factor that lands in the window — the largest plane
+    ///    at or below the target;
+    /// 2. the largest factor that stays above the target — the plane closest
+    ///    to it from above;
+    /// 3. the native plane.
+    ///
+    /// The result is always a whole-pixel block map of the source and never
+    /// larger than it. Every result is checked against the detector bounds;
+    /// a source no valid factor exists for is an error.
     pub fn for_source_height(
         source_width: u32,
         source_height: u32,
@@ -61,16 +68,16 @@ impl AnalysisSize {
         if target_height == 0 {
             return Err(AnalysisSizeError::ZeroAnalysisHeight);
         }
+        let landing_floor = target_height / 6 * 5;
 
         // The factor must divide both dimensions, so it divides their gcd.
-        // Ascending order makes the first hit the largest result that
-        // reaches the target. `native` holds the k = 1 result and `partial`
-        // the smallest factor above one: when nothing reaches the target,
-        // the partial downscale still divides the work, so it wins over the
-        // native plane.
+        // Ascending order makes the first window hit the largest plane in
+        // the window, and the last above-target assignment the plane closest
+        // to the target from above.
         let common = gcd(source_width, source_height);
+        let mut in_window = None;
+        let mut above = None;
         let mut native = None;
-        let mut partial = None;
         for factor in 1..=common {
             if !common.is_multiple_of(factor) {
                 continue;
@@ -83,14 +90,18 @@ impl AnalysisSize {
                 continue;
             }
             if size.height <= target_height {
-                return Ok(size);
+                if size.height >= landing_floor {
+                    in_window.get_or_insert(size);
+                }
+            } else {
+                above = Some(size);
             }
-            if factor > 1 {
-                partial.get_or_insert(size);
+            if factor == 1 {
+                native.get_or_insert(size);
             }
-            native.get_or_insert(size);
         }
-        partial
+        in_window
+            .or(above)
             .or(native)
             .ok_or(AnalysisSizeError::NoSupportedScale {
                 source_width,
@@ -250,18 +261,45 @@ mod tests {
     }
 
     #[test]
-    fn non_standard_sources_divide_by_their_smallest_reaching_factor() {
-        // The user-recorded examples.
+    fn non_standard_sources_land_in_the_window_or_above_it() {
+        // 720x576: the only landing at or below the target is 288, below the
+        // 300 floor, so the source is analyzed natively.
         let size = AnalysisSize::for_source(720, 576).expect("720x576 derives");
-        assert_eq!((size.width(), size.height()), (360, 288));
+        assert_eq!((size.width(), size.height()), (720, 576));
 
+        // 1024x768: k = 2 lands at 384, above the target but the closest a
+        // factor comes; k = 4 lands at 192, under the floor.
         let size = AnalysisSize::for_source(1024, 768).expect("1024x768 derives");
-        // 768/2 = 384 is above the target, 3 does not divide 1024, so k = 4.
-        assert_eq!((size.width(), size.height()), (256, 192));
+        assert_eq!((size.width(), size.height()), (512, 384));
 
-        // 960x432: k = 2 reaches 216.
+        // 960x432 and 854x480: their reaching landings (216, 240) are under
+        // the floor, so both are analyzed natively.
         let size = AnalysisSize::for_source(960, 432).expect("960x432 derives");
-        assert_eq!((size.width(), size.height()), (480, 216));
+        assert_eq!((size.width(), size.height()), (960, 432));
+        let size = AnalysisSize::for_source(854, 480).expect("854x480 derives");
+        assert_eq!((size.width(), size.height()), (854, 480));
+
+        // 1366x768: k = 2 lands at 384, the closest above the target.
+        let size = AnalysisSize::for_source(1366, 768).expect("1366x768 derives");
+        assert_eq!((size.width(), size.height()), (683, 384));
+
+        // 4096x2160: the native area exceeds the pixel cap; the closest
+        // above-target landing inside the bounds is k = 4.
+        let size = AnalysisSize::for_source(4096, 2160).expect("4096x2160 derives");
+        assert_eq!((size.width(), size.height()), (1024, 540));
+    }
+
+    #[test]
+    fn a_source_no_divisor_reaches_the_window_is_analyzed_natively() {
+        // Two prime dimensions share no factor above one, so the source is
+        // analyzed natively.
+        let size = AnalysisSize::for_source(1367, 769).expect("1367x769 derives");
+        assert_eq!((size.width(), size.height()), (1367, 769));
+
+        // 767 = 13 * 59: the only landing under the target is 59, far below
+        // the floor, so the source is analyzed natively instead.
+        let size = AnalysisSize::for_source(1560, 767).expect("1560x767 derives");
+        assert_eq!((size.width(), size.height()), (1560, 767));
     }
 
     #[test]
@@ -278,30 +316,7 @@ mod tests {
     }
 
     #[test]
-    fn a_source_no_divisor_reaches_the_target_is_still_divided() {
-        // The only common factors of 1366x768 are 1 and 2, and 768/2 = 384 is
-        // above the target, but halving still divides the work four ways.
-        let size = AnalysisSize::for_source(1366, 768).expect("1366x768 derives");
-        assert_eq!((size.width(), size.height()), (683, 384));
-
-        // 854x480: k = 2 reaches the target outright (240 <= 360).
-        let size = AnalysisSize::for_source(854, 480).expect("854x480 derives");
-        assert_eq!((size.width(), size.height()), (427, 240));
-
-        // Two prime dimensions share no factor above one, so the source is
-        // analyzed natively.
-        let size = AnalysisSize::for_source(1367, 769).expect("1367x769 derives");
-        assert_eq!((size.width(), size.height()), (1367, 769));
-    }
-
-    #[test]
     fn the_scale_factor_keeps_every_dimension_inside_the_bounds() {
-        // 4096x2160 natively exceeds the pixel cap; the derivation walks the
-        // divisors until the area fits, at k = 4 first (1024x540), which is
-        // above the target, then k = 8 reaches 270.
-        let size = AnalysisSize::for_source(4096, 2160).expect("4096x2160 derives");
-        assert_eq!((size.width(), size.height()), (512, 270));
-
         // A source below the 48-pixel minimum has no valid scale at all.
         assert_eq!(
             AnalysisSize::for_source(100, 32),
