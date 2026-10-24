@@ -7,7 +7,7 @@
 //! decision function can be tested against the pinned reference on its own.
 //!
 //! [`detect`] holds the ordered state and the decision; [`frame_index`] holds the
-//! index types that name frames and boundaries. `docs/WWXD_DESIGN.md` maps each
+//! index types that name frames and boundaries. `docs/WwxdDesign.md` maps each
 //! rule to the pinned WWXD `detection.c` and separates it from project
 //! extensions.
 

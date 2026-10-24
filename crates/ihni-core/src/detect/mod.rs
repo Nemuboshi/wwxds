@@ -5,7 +5,7 @@
 //! prepared frames in increasing display order; the detector returns a decision
 //! only after it validates the whole frame. The core is a faithful port of the
 //! pinned `detection.c` decision function and has no decoder, FFmpeg, or CLI
-//! dependency. See `docs/WWXD_DESIGN.md` for the source mapping, equations,
+//! dependency. See `docs/WwxdDesign.md` for the source mapping, equations,
 //! constants, and bounds.
 
 mod core;

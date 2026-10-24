@@ -266,7 +266,7 @@ fn init() {
 /// Version string of the linked libav libraries.
 ///
 /// Used by this module's test to prove the static libraries linked and are
-/// callable, and recorded by `docs/DECODE.md`.
+/// callable, and recorded by `docs/Architecture.md`.
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn library_version() -> String {
     init();

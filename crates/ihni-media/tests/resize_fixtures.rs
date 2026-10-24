@@ -137,7 +137,7 @@ fn production_resize_reproduces_the_recorded_swscale_bytes() {
         // Only the pixels of each row are part of the recorded result: the
         // destination stride is the 64-byte-aligned one a real libav caller
         // passes, and swscale's SIMD output also writes into that padding
-        // (docs/DECODE.md, "Measurement conditions").
+        // (docs/Architecture.md, "Measurement conditions").
         let expected: Vec<u8> = recorded
             .chunks_exact(case.target_stride)
             .flat_map(|row| {

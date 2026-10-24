@@ -17,7 +17,7 @@
 //!
 //! Decoding happens in this process, through the C shim in `csrc/` and the
 //! declarations in `ffi`. The binary starts no child process and reads no pipe.
-//! FFmpeg libraries are linked statically; see `docs/DECODE.md`.
+//! FFmpeg libraries are linked statically; see `docs/Architecture.md`.
 //!
 //! The detector is not here: this crate depends on `ihni-core` for the frame
 //! index types, never the other way round. The production resize is the

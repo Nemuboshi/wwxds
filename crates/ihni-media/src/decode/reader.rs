@@ -9,7 +9,7 @@
 //! libswscale through the C shim: one `SWS_BICUBIC` context writing
 //! `gray16le`, reduced per sample by `>> 8` to the 8-bit analysis plane. The
 //! bytes are the bytes swscale produces; see
-//! [docs/DECODE.md](../../../../docs/DECODE.md).
+//! [docs/Architecture.md](../../../../docs/Architecture.md).
 //!
 //! Time stamps come from the decoder. The default mode still reports none: a
 //! source time stamp is only reported when the caller asks for it explicitly.

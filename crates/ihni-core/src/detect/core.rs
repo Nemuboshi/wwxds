@@ -5,7 +5,7 @@
 //! crate's frame-index types. It has no decoder, FFmpeg, or CLI dependency.
 //!
 //! Integer widths mirror C `int` (`i32`). Section 6 of
-//! [`crate::detect`] (docs/WWXD_DESIGN.md) proves every accumulator stays inside
+//! [`crate::detect`] (docs/WwxdDesign.md) proves every accumulator stays inside
 //! `i32` for the legal analysis range, so no wrapping is used. `debug_assert!`
 //! pins the documented maxima; a panic there means a transcription error, not a
 //! reachable input.
@@ -77,7 +77,7 @@ pub(crate) struct Geometry {
 /// `typedef struct { ... } SearchData` (detection.h). Reused scratch across all
 /// blocks and frames; the caller zeroes it once at construction (the reference
 /// relies on the always-run `(0,0)` candidate to write every field before it is
-/// read — docs/WWXD_DESIGN.md §5, §7 — so zeroing is a safety belt, not a
+/// read — docs/WwxdDesign.md §5, §7 — so zeroing is a safety belt, not a
 /// semantic choice).
 #[derive(Clone, Debug)]
 pub(crate) struct SearchData {
@@ -133,7 +133,7 @@ fn mb_byte(g: &Geometry, gx: u32, gy: u32) -> usize {
 ///
 /// Sums the absolute difference over a 16x16 block. `cur` and `ref_` are absolute
 /// byte offsets of the block origin in the two padded planes. Bounds are proven
-/// in docs/WWXD_DESIGN.md §6; the assertion catches a mis-ported clamp.
+/// in docs/WwxdDesign.md §6; the assertion catches a mis-ported clamp.
 ///
 /// On x86-64 the row sum runs on SSE2 `PSADBW` (baseline on every x86-64 CPU;
 /// no runtime detection is needed). `PSADBW` sums the absolute differences of
@@ -149,7 +149,7 @@ fn sad16(plane_cur: &[u8], plane_ref: &[u8], ew: usize, cur: usize, ref_: usize)
         // The scalar path below would panic through its slice bounds on a bad
         // origin; the SIMD path reads raw pointers, so the same condition is
         // asserted in release too. The predicate is the documented bound from
-        // docs/WWXD_DESIGN.md §6, proven reachable only for valid macroblock
+        // docs/WwxdDesign.md §6, proven reachable only for valid macroblock
         // grids and clamped search offsets.
         assert!(cur + 15 * ew + 16 <= plane_cur.len());
         assert!(ref_ + 15 * ew + 16 <= plane_ref.len());
@@ -671,7 +671,7 @@ pub(crate) struct AnalysisResult {
 // Kept as a 1:1 map of the reference `MEanalysis`, whose C parameters are the two
 // planes, MBParam, pMBs, intraCount, and fcode. Rust's plane borrows add two
 // parameters over the C six; grouping them into one struct would obscure the
-// line-for-line mapping this port is required to preserve (docs/WWXD_DESIGN.md).
+// line-for-line mapping this port is required to preserve (docs/WwxdDesign.md).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn me_analysis(
     plane_ref: &[u8],
@@ -773,7 +773,7 @@ pub(crate) fn me_analysis(
     debug_assert!(divisor > 0);
     let mean_sad = s_sad / divisor;
 
-    // Bounds from docs/WWXD_DESIGN.md §6.
+    // Bounds from docs/WwxdDesign.md §6.
     debug_assert!(s_sad.unsigned_abs() <= 600_000_000);
     debug_assert!(complexity.unsigned_abs() <= 600_000_000);
 

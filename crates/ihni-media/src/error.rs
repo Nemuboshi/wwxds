@@ -101,7 +101,7 @@ impl Display for MediaError {
             Self::UnsupportedPixelFormat { path, pixel_format } => write!(
                 formatter,
                 "input '{}' uses unsupported pixel format '{pixel_format}'; \
-                 supported 8-bit and 10-bit formats are listed in docs/DECODE.md",
+                 supported 8-bit and 10-bit formats are listed in docs/Architecture.md",
                 path.display()
             ),
             Self::ThreadSpawn { path, source } => write!(

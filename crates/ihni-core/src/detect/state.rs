@@ -32,7 +32,7 @@ pub struct Detector {
     current: Vec<u8>,
     /// Reused macroblock predictors (`golden.c` `blocks`); never re-zeroed.
     mbs: Vec<MacroBlock>,
-    /// Reused search scratch, zeroed once (see docs/WWXD_DESIGN.md §5, §7).
+    /// Reused search scratch, zeroed once (see docs/WwxdDesign.md §5, §7).
     search: SearchData,
     /// Next expected display-order index.
     next_index: u64,

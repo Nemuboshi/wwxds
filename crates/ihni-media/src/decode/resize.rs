@@ -15,7 +15,7 @@
 //! The destination plane never hands swscale a tight buffer. swscale's SIMD
 //! output writes whole vectors and overruns a row stride no real libav caller
 //! would produce, so the plane uses the same 64-byte-aligned row stride the
-//! parity harness measured with (`docs/DECODE.md`, "Measurement conditions").
+//! parity harness measured with (`docs/Architecture.md`, "Measurement conditions").
 //! The 8-bit analysis plane the detector consumes is that 16-bit result
 //! reduced per sample by `>> 8`, which for little-endian `gray16le` is the
 //! second byte of each pair. One path, one reduction: the two forms cannot

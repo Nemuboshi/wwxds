@@ -7,7 +7,7 @@
 //! verified.
 //!
 //! The asserted bytes are real `sws_scale` output through the C shim, checked
-//! against the two arithmetic identities `docs/DECODE.md` records for this
+//! against the two arithmetic identities `docs/Architecture.md` records for this
 //! configuration:
 //!
 //! - identity geometry promotes with `(v << (16 - depth)) | (v >> (2 * depth - 16))`,
