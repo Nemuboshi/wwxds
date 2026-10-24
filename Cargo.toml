@@ -1,6 +1,7 @@
 [package]
 name = "wwxds"
 version = "0.1.0"
+license = "GPL-2.0-only"
 edition = "2024"
 description = "A standalone Rust WWXD hard-cut detector, independent of VapourSynth"
 

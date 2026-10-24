@@ -1,6 +1,7 @@
 [package]
 name = "wwxds-media"
 version = "0.1.0"
+license = "GPL-2.0-only"
 edition = "2024"
 description = "WWXDS media layer: stream probing, display-order luma decoding, and frame overlap"
 publish = false

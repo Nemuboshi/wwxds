@@ -1,6 +1,7 @@
 [package]
 name = "wwxds-core"
 version = "0.1.0"
+license = "GPL-2.0-only"
 edition = "2024"
 description = "WWXDS detection core: ordered WWXD hard-cut detection over prepared frames"
 publish = false
