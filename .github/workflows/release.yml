@@ -1,0 +1,110 @@
+name: Release
+
+# A pushed `v-*` tag builds the release binary and publishes it to that tag's
+# release. The build runs the same gates as the checks workflow — tests, the
+# link gate, and a smoke run — so a release is never published from an
+# untested tree.
+
+on:
+  push:
+    tags:
+      - 'v-*'
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release:
+    name: Build and publish the release binary
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # The install is verified rather than assumed. `choco install` has been
+      # observed to exit 0 while installing nothing when the community feed
+      # returns a gateway timeout.
+      - name: Install FFmpeg and FFprobe
+        shell: bash
+        run: |
+          choco install ffmpeg --no-progress --yes || true
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            echo "FFmpeg is not on PATH after the install; retrying once." >&2
+            choco install ffmpeg --no-progress --yes || true
+          fi
+          for tool in ffmpeg ffprobe; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+              echo "Required tool '$tool' is not on PATH after installing FFmpeg." >&2
+              exit 1
+            fi
+          done
+          ffmpeg -version | head -n 1
+
+      - name: Fetch the FFmpeg dev prefix
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prefix=$(bash scripts/fetch-ffmpeg-libs.sh)
+          echo "FFMPEG_DIR=$(cygpath -m "$GITHUB_WORKSPACE/$prefix")" >> "$GITHUB_ENV"
+          echo "Fetched $prefix"
+
+      - name: Run tests
+        shell: bash
+        run: |
+          bash scripts/make-m1-fixtures.sh
+          cargo test --all-targets --all-features
+
+      - name: Build the release binary
+        shell: bash
+        run: cargo build --release
+
+      - name: Check the link gate
+        shell: bash
+        run: bash scripts/check-link-gate.sh target/release/wwxds.exe
+
+      - name: Smoke-test the release binary
+        shell: bash
+        run: |
+          output=$(target/release/wwxds.exe --version)
+          printf '%s\n' "$output"
+          [[ "$output" == wwxds* ]] || { echo "unexpected version output" >&2; exit 1; }
+
+      # The binary is statically linked against FFmpeg, so the archive needs
+      # no DLLs. README.md and LICENSE ride along for the download page.
+      - name: Package the binary
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          [[ "$TAG" =~ ^v-[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || { echo "unexpected tag '$TAG'" >&2; exit 1; }
+          asset="wwxds-$TAG-windows-x64.zip"
+
+          staging="$(cygpath -u "$RUNNER_TEMP")/wwxds-release"
+          rm -rf "$staging"
+          mkdir -p "$staging"
+          cp target/release/wwxds.exe README.md LICENSE "$staging/"
+
+          zip="$(pwd)/$asset"
+          rm -f "$zip"
+          (cd "$staging" && 7z a -tzip "$(cygpath -w "$zip")" .)
+          bytes="$(wc -c < "$zip")"
+          echo "packed $zip, $bytes bytes"
+          (( bytes >= 1048576 )) || { echo 'the archive is suspiciously small' >&2; exit 1; }
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: |
+            Standalone WWXD hard-cut detector, build ${{ github.ref_name }}.
+
+            `wwxds.exe` is statically linked against FFmpeg: no DLLs, no
+            VapourSynth. See README.md in the archive for usage.
+          files: wwxds-${{ github.ref_name }}-windows-x64.zip
