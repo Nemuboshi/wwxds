@@ -102,7 +102,4 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
-          body: |
-            Build ${{ github.ref_name }}. `wwxds.exe` is statically linked:
-            no DLLs needed. README.md and LICENSE are in the archive.
           files: wwxds-${{ github.ref_name }}-windows-x64.zip
