@@ -177,7 +177,7 @@ pub struct Decision {
 
 - **Deterministic Output**: For identical input pixel bytes and frame sequences, the detector produces bit-identical decisions and scores.
 - **Single-Threaded State**: The `Detector` executes on a single thread. It cannot be parallelized across macroblocks because spatial predictor propagation and early exit raster states are strictly serial.
-- **Decoupled Decoding**: Frame decoding and scaling run on a background producer thread (see `docs/Architecture.md`). The detector consumes complete frames sequentially through a bounded channel.
+- **Decoupled Decoding**: Frame decoding and analysis-plane production run on a background producer thread (see `docs/Architecture.md`). The detector consumes complete frames sequentially through a bounded channel.
 
 ---
 
@@ -185,6 +185,7 @@ pub struct Decision {
 
 Correctness is proved through automated oracle parity checks:
 
+- **Scope**: The golden vectors pin the *decision core* — the state machine over prepared 8-bit planes. They are independent of how those planes were produced: the analysis-plane filter lives upstream in `ihni-media` (`docs/Architecture.md`, §4), and changing it requires corpus boundary-comparison evidence, not oracle regeneration.
 - **Reference Oracle**: `oracle/wwxd-golden` compiles the pinned reference C code and runs against committed fixtures in `tests/fixtures/detect/`.
 - **Golden Vectors**: The oracle generates `golden.json`, recording observable decisions, `shot_age`, and FNV-1a digests of macroblock predictors and padded reference regions.
 - **Automated Verification**: Regular tests check Rust output against `golden.json` without requiring a C compiler. Dedicated CI jobs recompile the reference C code on Linux and verify zero diff against `golden.json`.

@@ -160,4 +160,5 @@ When submitting future optimizations:
 1. **Never add overlapping stages**: Do not sum `producer_decode`, `producer_resize`, and `queue_wait` into total elapsed time.
 2. **No claims from CPU usage**: High CPU utilization is not proof of throughput improvement.
 3. **Record regressions honestly**: Document any performance regressions alongside gains (e.g., 10-bit HEVC under multithreaded scaling).
-4. **Preserve exact parity**: An optimization that changes decision boundaries or breaks golden vectors will be rejected.
+4. **Decision-core parity is absolute**: The golden vectors of `docs/WwxdDesign.md` §9 are never regenerated to make an optimization pass.
+5. **Analysis-plane changes need corpus evidence**: The analysis plane is now produced by the project's integer box filter (`docs/Architecture.md` §4), not swscale. A change to it must ship a boundary comparison over the committed video corpus, recorded here, alongside the regenerated plane fixtures and digest lists.

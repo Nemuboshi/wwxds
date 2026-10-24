@@ -49,21 +49,31 @@
 
 ## FFI and FFmpeg
 
-- All access to `AVFormatContext`, `AVCodecContext`, `AVFrame`, `AVPacket`, and `SwsContext` must stay in `crates/ihni-media/csrc/ihni_ffmpeg.c`.
+- All access to `AVFormatContext`, `AVCodecContext`, `AVFrame`, and `AVPacket` must stay in `crates/ihni-media/csrc/ihni_ffmpeg.c`.
 - No Rust file may include a libav header, name a libav type, or assume a struct offset.
 - Do not add `bindgen` or a `libclang` dependency. Hand-written `extern "C"` declarations and the C shim are the contract.
 - Every `unsafe` block must include a `SAFETY` comment that explains why the block is sound.
 - A pointer to a decoded frame buffer is valid only until the next call on the same handle. Read data under its actual stride immediately.
-- Use FFmpeg libraries directly through the C shim for reading and resizing.
+- Use FFmpeg libraries directly through the C shim for reading. The analysis-plane filter no longer uses swscale; do not relink it.
 - Do not bundle `ffmpeg.exe` or `ffprobe.exe`. Do not introduce FFMS2.
 - Verify that the link gate allows intended symbols and rejects unexpected dependencies.
 
-## Resampling
+## GPU Backends
 
-- Use the single `SwsContext` path in the C shim with gray source, `gray16le` target, and `SWS_BICUBIC` defaults.
-- Generate the 8-bit analysis plane by reducing the 16-bit swscale output by `>> 8` in the same operation.
-- Do not add a secondary 8-bit resize path.
-- Do not break byte parity with committed fixtures or digest lists.
+- GPU acceleration is an optional backend inside `ihni-media` behind a documented selection flag; the CPU path is always present and is the fallback.
+- All CUDA driver, runtime, and kernel-launch access stays in `crates/ihni-media/csrc/`. No Rust file may include a CUDA header or name a CUDA type; hand-written `extern "C"` declarations are the contract.
+- Kernels are compiled by `nvcc` as part of the shim build; a missing CUDA toolkit must degrade the build to the CPU path, not fail it, unless an explicit build feature asks for the backend.
+- A GPU backend must reproduce the CPU analysis planes and detection statistics byte for byte, and must keep frame data on the device between stages whenever it can; a per-frame round trip through host memory must be measured before it is accepted.
+- Backend selection and fallback are explicit: probe the requested backend, report the outcome on standard error, and fall back to CPU without changing the output bytes.
+
+## Analysis Plane
+
+- Produce the 8-bit analysis plane with the project's integer box (area-average) filter, defined exactly in `docs/Architecture.md`.
+- Keep the filter arithmetic in exact integers (weight accumulation and rounded division), never floating point, so every backend produces byte-identical planes.
+- The CPU implementation is the reference. A GPU backend is accepted only when its planes match the CPU implementation byte for byte on the committed fixtures.
+- Read decoded luma planes under their actual strides and reduce 10-bit sources to 8-bit only after their integer mean is computed, by `>> 2` of the rounded mean.
+- Do not add a second filter with different arithmetic to the same backend.
+- Do not break byte parity with committed fixtures or digest lists; regenerate them only through the committed generator and record the change.
 
 ## Memory and Data Processing
 
@@ -100,7 +110,8 @@
 - Do not classify every bright frame as a flash.
 - Do not add motion estimation, edge processing, or expensive operations without measured benefit.
 - The reference implementation is the pinned WWXD `detection.c` in `oracle/wwxd-golden`.
-- All changes must reproduce the committed golden vectors: decision, shot age, macroblock predictors, and plane digests.
+- All changes to the decision core must reproduce the committed golden vectors: decision, shot age, macroblock predictors, and plane digests.
+- The decision core is independent of the analysis-plane filter. A filter change must be justified by a boundary comparison over the committed video corpus, recorded in `docs/Performance.md`, before it is accepted.
 - Do not claim exact reproduction of the Fraunhofer 2004 system without evidence.
 
 ## Performance Rules
@@ -122,6 +133,7 @@
 - Test edge cases: repeated frames, hard cuts, flashes, short shots, truncated input, invalid strides, VFR, and missing timestamps.
 - Verify frame indexes and timestamps independently of detection results.
 - Compare detector results against the reference oracle in `oracle/wwxd-golden`.
+- Compare analysis planes of every GPU backend against the CPU implementation byte for byte on the committed fixtures.
 - Do not change expected test results to make a failing test pass.
 - Keep benchmark inputs and configurations consistent across revisions.
 
