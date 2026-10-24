@@ -1,0 +1,313 @@
+{
+  "fixtures": [
+    {
+      "frames": [
+        {
+          "cut": true,
+          "predictors": 14135118042268601893,
+          "previous": 12597750243050629541,
+          "shot_age": 1
+        },
+        {
+          "cut": false,
+          "predictors": 14135118042268601893,
+          "previous": 12597750243050629541,
+          "shot_age": 2
+        },
+        {
+          "cut": false,
+          "predictors": 14135118042268601893,
+          "previous": 12597750243050629541,
+          "shot_age": 3
+        },
+        {
+          "cut": false,
+          "predictors": 14135118042268601893,
+          "previous": 12597750243050629541,
+          "shot_age": 4
+        },
+        {
+          "cut": false,
+          "predictors": 14135118042268601893,
+          "previous": 12597750243050629541,
+          "shot_age": 5
+        },
+        {
+          "cut": false,
+          "predictors": 14135118042268601893,
+          "previous": 12597750243050629541,
+          "shot_age": 6
+        },
+        {
+          "cut": false,
+          "predictors": 14135118042268601893,
+          "previous": 12597750243050629541,
+          "shot_age": 7
+        },
+        {
+          "cut": false,
+          "predictors": 14135118042268601893,
+          "previous": 12597750243050629541,
+          "shot_age": 8
+        }
+      ],
+      "height": 64,
+      "name": "uniform_repeat",
+      "stride": 96,
+      "width": 96
+    },
+    {
+      "frames": [
+        {
+          "cut": true,
+          "predictors": 14135118042268601893,
+          "previous": 12597750243050629541,
+          "shot_age": 1
+        },
+        {
+          "cut": false,
+          "predictors": 14135118042268601893,
+          "previous": 12597750243050629541,
+          "shot_age": 2
+        },
+        {
+          "cut": false,
+          "predictors": 14135118042268601893,
+          "previous": 12597750243050629541,
+          "shot_age": 3
+        },
+        {
+          "cut": true,
+          "predictors": 13400119920396293470,
+          "previous": 5264960020688521637,
+          "shot_age": 1
+        },
+        {
+          "cut": false,
+          "predictors": 14135118042268601893,
+          "previous": 5264960020688521637,
+          "shot_age": 2
+        },
+        {
+          "cut": false,
+          "predictors": 14135118042268601893,
+          "previous": 5264960020688521637,
+          "shot_age": 3
+        }
+      ],
+      "height": 64,
+      "name": "single_hard_cut",
+      "stride": 96,
+      "width": 96
+    },
+    {
+      "frames": [
+        {
+          "cut": true,
+          "predictors": 14135118042268601893,
+          "previous": 12597750243050629541,
+          "shot_age": 1
+        },
+        {
+          "cut": true,
+          "predictors": 13400119920396293470,
+          "previous": 5264960020688521637,
+          "shot_age": 1
+        },
+        {
+          "cut": true,
+          "predictors": 13400119920396293470,
+          "previous": 12597750243050629541,
+          "shot_age": 1
+        },
+        {
+          "cut": true,
+          "predictors": 13400119920396293470,
+          "previous": 5264960020688521637,
+          "shot_age": 1
+        }
+      ],
+      "height": 64,
+      "name": "two_adjacent_cuts",
+      "stride": 96,
+      "width": 96
+    },
+    {
+      "frames": [
+        {
+          "cut": true,
+          "predictors": 14135118042268601893,
+          "previous": 12597750243050629541,
+          "shot_age": 1
+        },
+        {
+          "cut": false,
+          "predictors": 14135118042268601893,
+          "previous": 12597750243050629541,
+          "shot_age": 2
+        },
+        {
+          "cut": true,
+          "predictors": 551516867534215554,
+          "previous": 16185676453250307493,
+          "shot_age": 1
+        },
+        {
+          "cut": false,
+          "predictors": 9995729577166919557,
+          "previous": 12597750243050629541,
+          "shot_age": 2
+        }
+      ],
+      "height": 64,
+      "name": "single_tile_flip",
+      "stride": 96,
+      "width": 96
+    },
+    {
+      "frames": [
+        {
+          "cut": true,
+          "predictors": 14135118042268601893,
+          "previous": 12597750243050629541,
+          "shot_age": 1
+        },
+        {
+          "cut": false,
+          "predictors": 5143512200556153125,
+          "previous": 3568338680603748773,
+          "shot_age": 2
+        },
+        {
+          "cut": false,
+          "predictors": 5143512200556153125,
+          "previous": 7848697892389210533,
+          "shot_age": 3
+        },
+        {
+          "cut": false,
+          "predictors": 5143512200556153125,
+          "previous": 13225036447095081381,
+          "shot_age": 4
+        },
+        {
+          "cut": false,
+          "predictors": 5143512200556153125,
+          "previous": 2032580734818560421,
+          "shot_age": 5
+        },
+        {
+          "cut": false,
+          "predictors": 5143512200556153125,
+          "previous": 7274287322369501605,
+          "shot_age": 6
+        },
+        {
+          "cut": false,
+          "predictors": 5143512200556153125,
+          "previous": 14015261944979917221,
+          "shot_age": 7
+        },
+        {
+          "cut": false,
+          "predictors": 5143512200556153125,
+          "previous": 4868873688581081509,
+          "shot_age": 8
+        }
+      ],
+      "height": 64,
+      "name": "bright_ramp",
+      "stride": 96,
+      "width": 96
+    },
+    {
+      "frames": [
+        {
+          "cut": true,
+          "predictors": 14135118042268601893,
+          "previous": 5417704190477341093,
+          "shot_age": 1
+        },
+        {
+          "cut": false,
+          "predictors": 15258175260517125157,
+          "previous": 12717640373375547045,
+          "shot_age": 2
+        },
+        {
+          "cut": false,
+          "predictors": 15258175260517125157,
+          "previous": 15501710760756897829,
+          "shot_age": 3
+        },
+        {
+          "cut": false,
+          "predictors": 15258175260517125157,
+          "previous": 139341208682596133,
+          "shot_age": 4
+        },
+        {
+          "cut": false,
+          "predictors": 15258175260517125157,
+          "previous": 11870563555159180069,
+          "shot_age": 5
+        },
+        {
+          "cut": false,
+          "predictors": 15258175260517125157,
+          "previous": 13230566781264576805,
+          "shot_age": 6
+        },
+        {
+          "cut": false,
+          "predictors": 15258175260517125157,
+          "previous": 11824688563857946277,
+          "shot_age": 7
+        },
+        {
+          "cut": false,
+          "predictors": 15258175260517125157,
+          "previous": 9287166257863287461,
+          "shot_age": 8
+        }
+      ],
+      "height": 64,
+      "name": "translation_motion",
+      "stride": 96,
+      "width": 96
+    },
+    {
+      "frames": [
+        {
+          "cut": true,
+          "predictors": 14135118042268601893,
+          "previous": 12597750243050629541,
+          "shot_age": 1
+        },
+        {
+          "cut": false,
+          "predictors": 14135118042268601893,
+          "previous": 12597750243050629541,
+          "shot_age": 2
+        },
+        {
+          "cut": true,
+          "predictors": 13400119920396293470,
+          "previous": 5264960020688521637,
+          "shot_age": 1
+        },
+        {
+          "cut": false,
+          "predictors": 14135118042268601893,
+          "previous": 5264960020688521637,
+          "shot_age": 2
+        }
+      ],
+      "height": 60,
+      "name": "odd_size_cut",
+      "stride": 90,
+      "width": 90
+    }
+  ],
+  "reference_commit": "a5870862fd85138b5e4822a076377b96592c9cd2"
+}

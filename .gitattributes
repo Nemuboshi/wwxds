@@ -1,0 +1,16 @@
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Detector fixtures. The parity digests are computed over exact bytes, so the
+# luma blobs must never be line-ending translated. The manifest and golden vectors
+# are compared with `git diff` after a regeneration, so they stay LF on every OS
+# even with core.autocrlf set.
+tests/fixtures/detect/*.bin binary
+tests/fixtures/detect/*.json text eol=lf
+
+# Resize regression fixtures (recorded swscale planes). They are compared byte
+# for byte, so they are binary and must not be translated. The index is a text
+# manifest.
+crates/ihni-media/tests/fixtures/resize/*.in binary
+crates/ihni-media/tests/fixtures/resize/*.out binary
+crates/ihni-media/tests/fixtures/resize/index.txt text eol=lf

@@ -1,0 +1,238 @@
+name: checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      # The install is verified rather than assumed. `choco install` has been
+      # observed to exit 0 while installing nothing when the community feed
+      # returns a gateway timeout, which previously let the job continue and
+      # fail much later with a confusing "ffmpeg was not found on PATH".
+      - name: Install FFmpeg and FFprobe
+        shell: bash
+        run: |
+          choco install ffmpeg --no-progress --yes || true
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            echo "FFmpeg is not on PATH after the install; retrying once." >&2
+            choco install ffmpeg --no-progress --yes || true
+          fi
+          for tool in ffmpeg ffprobe; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+              echo "Required tool '$tool' is not on PATH after installing FFmpeg." >&2
+              exit 1
+            fi
+          done
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
+
+      # The pinned FFmpeg dev prefix. The script downloads the release asset,
+      # verifies its sha256 and byte count, extracts it, and prints the prefix.
+      # `cygpath -m` converts it to the Windows form build.rs needs, because
+      # build.rs is a Windows process and cannot read a /d/... style path.
+      - name: Fetch the pinned FFmpeg libraries
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          prefix=$(bash scripts/fetch-ffmpeg-libs.sh)
+          # The fetch script prints a repo-relative path; build.rs resolves
+          # FFMPEG_DIR against the build-script CWD (the package dir), so the
+          # env var must be absolute — anchored at $GITHUB_WORKSPACE.
+          echo "FFMPEG_DIR=$(cygpath -m "$GITHUB_WORKSPACE/$prefix")" >> "$GITHUB_ENV"
+          echo "Fetched $prefix"
+
+      - name: Check formatting
+        shell: bash
+        run: cargo fmt --all -- --check
+
+      - name: Run strict Clippy
+        shell: bash
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      # Fixtures are generated before the tests so the decode and pipeline tests
+      # run against real media instead of skipping. A missing encoder fails the
+      # step.
+      - name: Create decode fixtures
+        shell: bash
+        run: bash scripts/make-m1-fixtures.sh
+
+      - name: Run tests
+        shell: bash
+        run: cargo test --all-targets --all-features
+
+      - name: Build release binary
+        shell: bash
+        run: cargo build --release
+
+      # The library is static, so a DLL import would mean the wrong prefix was
+      # linked. swscale is the only resize path, so the binary must contain it:
+      # the script fails on an accidental FFmpeg DLL import and on an image
+      # without swscale code. The production path itself is verified by the
+      # tests above, which decode and resize real fixtures through it.
+      - name: Check the link gate
+        shell: bash
+        run: bash scripts/check-link-gate.sh target/release/ihni.exe
+
+      - name: Check release CLI
+        shell: bash
+        run: |
+          target/release/ihni.exe --help
+          target/release/ihni.exe --version
+
+          # A usage error exits 2, not 1: it is a caller mistake, not a runtime
+          # failure.
+          if output=$(target/release/ihni.exe --stream-index invalid sample.mp4 2>&1); then
+            printf '%s\n' "$output"
+            echo "Invalid stream index unexpectedly succeeded." >&2
+            exit 1
+          else
+            status=$?
+          fi
+          printf '%s\n' "$output"
+          if [ "$status" -ne 2 ]; then
+            echo "Invalid stream index returned unexpected exit code $status." >&2
+            exit 1
+          fi
+          if [[ "$output" != *"invalid value 'invalid'"* ]]; then
+            echo "Invalid stream index produced an unexpected error message." >&2
+            exit 1
+          fi
+
+      - name: Check the detector on the fixtures
+        shell: bash
+        run: |
+          # A complete clip publishes a keyframe file beside the input: two
+          # header lines, frame 0 from the file layer, then the cut at frame 6.
+          # The run must leave standard output empty.
+          rm -f target/m1-fixtures/cut8.mkv.kf.txt
+          stdout=$(target/release/ihni.exe target/m1-fixtures/cut8.mkv 2>/dev/null)
+          if [ -n "$stdout" ]; then
+            echo "A successful run wrote to standard output: $stdout" >&2
+            exit 1
+          fi
+          if [ ! -f target/m1-fixtures/cut8.mkv.kf.txt ]; then
+            echo "cut8.mkv did not produce cut8.mkv.kf.txt." >&2
+            exit 1
+          fi
+          printf '%s\n' "$(cat target/m1-fixtures/cut8.mkv.kf.txt)"
+          printf '# keyframe format v1\nfps 12.000000\n0\n6\n' > cut8-expected.kf.txt
+          if ! cmp cut8-expected.kf.txt target/m1-fixtures/cut8.mkv.kf.txt; then
+            echo "The keyframe document does not match the expected bytes." >&2
+            exit 1
+          fi
+          rm -f cut8-expected.kf.txt
+
+          # Re-running must refuse to overwrite the published file.
+          if target/release/ihni.exe target/m1-fixtures/cut8.mkv >/dev/null 2>&1; then
+            echo "A second run overwrote the existing keyframe file." >&2
+            exit 1
+          fi
+
+          # A truncated container must not be reported as a complete result and
+          # must publish nothing. `--no-progress` keeps the periodic display out
+          # of the captured output so the recorded message stays diffable.
+          rm -f target/m1-fixtures/truncated.mkv.kf.txt
+          if output=$(target/release/ihni.exe --no-progress target/m1-fixtures/truncated.mkv 2>&1); then
+            printf '%s\n' "$output"
+            echo "A truncated container unexpectedly succeeded." >&2
+            exit 1
+          else
+            status=$?
+          fi
+          printf '%s\n' "$output"
+          if [ "$status" -ne 1 ]; then
+            echo "A truncated container returned unexpected exit code $status." >&2
+            exit 1
+          fi
+          if [[ "$output" != *"did not complete"* ]]; then
+            echo "A truncated container produced an unexpected error message." >&2
+            exit 1
+          fi
+          if [[ "$output" == *"wrote "* ]]; then
+            echo "A failed run reported a published file." >&2
+            exit 1
+          fi
+          if [ -f target/m1-fixtures/truncated.mkv.kf.txt ]; then
+            echo "A failed run published a keyframe file." >&2
+            exit 1
+          fi
+          rm -f target/m1-fixtures/truncated.mkv.kf.txt
+
+          # With progress enabled (the default) the same failing run still
+          # shows intermediate progress and ends on the error, never a success
+          # message.
+          if output=$(target/release/ihni.exe target/m1-fixtures/truncated.mkv 2>&1); then
+            echo "A truncated container with progress unexpectedly succeeded." >&2
+            exit 1
+          fi
+          printf '%s\n' "$output"
+          if [[ "$output" != *"progress frames="* || "$output" != *"did not complete"* ]]; then
+            echo "A failing run with progress must show progress and the error." >&2
+            exit 1
+          fi
+          if [[ "$output" == *"wrote "* ]]; then
+            echo "A failing run with progress reported a published file." >&2
+            exit 1
+          fi
+          rm -f target/m1-fixtures/cut8.mkv.kf.txt target/m1-fixtures/truncated.mkv.kf.txt
+
+  # The detector's fidelity to the pinned WWXD decision core is checked, not
+  # asserted: this job rebuilds the C oracle from the pinned reference and
+  # regenerates golden.json, then fails if the committed vectors differ. A clean
+  # diff proves the committed expectations equal the live pinned C (reference
+  # commit a5870862), so the default cargo test can read them offline.
+  #
+  # It runs on Linux with gcc rather than the Windows MSVC path because the pinned
+  # detection.c uses C99 compound literals that MSVC may reject, and because a
+  # Linux-gcc match is itself a cross-platform fidelity signal. The oracle is a
+  # separate cargo workspace, so this never enters the windows job's build.
+  wwxd-golden-parity:
+    name: WWXD golden parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # gcc ships with ubuntu-latest; the install is verified rather than assumed.
+      - name: Check the C compiler
+        shell: bash
+        run: |
+          if ! command -v gcc >/dev/null 2>&1; then
+            echo "Required tool 'gcc' is not on PATH." >&2
+            exit 1
+          fi
+          gcc --version | head -n 1
+
+      - name: Clone the pinned WWXD reference
+        shell: bash
+        run: |
+          git clone https://github.com/dubhatervapoursynth/vapoursynth-wwxd.git target/wwxd-reference
+          git -C target/wwxd-reference checkout --detach a5870862fd85138b5e4822a076377b96592c9cd2
+          # Fail early with a clear message if the reference is not the pinned one.
+          test "$(git -C target/wwxd-reference rev-parse HEAD)" = a5870862fd85138b5e4822a076377b96592c9cd2
+
+      - name: Regenerate the golden vectors from the reference
+        shell: bash
+        run: cargo run --manifest-path oracle/wwxd-golden/Cargo.toml
+
+      - name: Verify the committed vectors match the reference
+        shell: bash
+        run: |
+          if ! git diff --exit-code -- tests/fixtures/detect/golden.json; then
+            echo "The committed golden.json differs from the pinned WWXD reference." >&2
+            echo "The port is not byte-exact, or a fixture changed without regeneration." >&2
+            git diff -- tests/fixtures/detect/golden.json >&2
+            exit 1
+          fi
+

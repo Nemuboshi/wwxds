@@ -1,0 +1,11 @@
+{
+  "fixtures": [
+    { "name": "uniform_repeat", "file": "uniform_repeat.bin", "width": 96, "height": 64, "stride": 96, "frames": 8 },
+    { "name": "single_hard_cut", "file": "single_hard_cut.bin", "width": 96, "height": 64, "stride": 96, "frames": 6 },
+    { "name": "two_adjacent_cuts", "file": "two_adjacent_cuts.bin", "width": 96, "height": 64, "stride": 96, "frames": 4 },
+    { "name": "single_tile_flip", "file": "single_tile_flip.bin", "width": 96, "height": 64, "stride": 96, "frames": 4 },
+    { "name": "bright_ramp", "file": "bright_ramp.bin", "width": 96, "height": 64, "stride": 96, "frames": 8 },
+    { "name": "translation_motion", "file": "translation_motion.bin", "width": 96, "height": 64, "stride": 96, "frames": 8 },
+    { "name": "odd_size_cut", "file": "odd_size_cut.bin", "width": 90, "height": 60, "stride": 90, "frames": 4 }
+  ]
+}

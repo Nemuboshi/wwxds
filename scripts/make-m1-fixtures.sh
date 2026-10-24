@@ -1,0 +1,323 @@
+#!/usr/bin/env bash
+# Generates the decode and preparation fixtures.
+#
+# The fixtures are small and fixed so decode behaviour is reproducible. Every
+# fixture is verified after creation: a fixture that does not carry the values
+# its recipe declares is a failure, not a test input.
+set -euo pipefail
+
+FFMPEG=${FFMPEG:-ffmpeg}
+FFPROBE=${FFPROBE:-ffprobe}
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+PROJECT_ROOT=${PROJECT_ROOT:-$(cd -- "$SCRIPT_DIR/.." && pwd -P)}
+TARGET_ROOT="$PROJECT_ROOT/target"
+FIXTURE_DIR="$TARGET_ROOT/m1-fixtures"
+MARKER="$FIXTURE_DIR/fixture-output.marker"
+
+fail() {
+    printf 'error: %s\n' "$*" >&2
+    exit 1
+}
+
+require_command() {
+    command -v "$1" >/dev/null 2>&1 || fail "Required command '$1' was not found on PATH."
+}
+
+json_quote() {
+    local value=$1
+    value=${value//\\/\\\\}
+    value=${value//\"/\\\"}
+    value=${value//$'\n'/\\n}
+    value=${value//$'\r'/\\r}
+    value=${value//$'\t'/\\t}
+    printf '"%s"' "$value"
+}
+
+# Mean luma of one decoded frame, as the reader would see it.
+#
+# Only the requested frame is decoded. Decoding the whole stream and cutting it
+# with `dd` would close the pipe early and make the decoder fail under
+# `set -o pipefail`.
+gray_frame_mean() {
+    local video_path=$1
+    local frame_index=$2
+    local width=$3
+    local height=$4
+    local frame_bytes=$((width * height))
+
+    "$FFMPEG" -hide_banner -loglevel error -nostdin -i "$video_path" -map 0:v:0 -an -sn -dn \
+        -vf "select=eq(n\,${frame_index}),extractplanes=y,scale=${width}:${height}" \
+        -frames:v 1 -pix_fmt gray16le -f rawvideo - |
+        od -An -v -tu2 -w2 -v |
+        awk -v expected="$frame_bytes" '{
+            for (i = 1; i <= NF; i++) {
+                sum += int($i / 256)
+                count++
+            }
+        }
+        END {
+            if (count != expected) {
+                exit 1
+            }
+            printf "%.2f", sum / expected
+        }'
+}
+
+# Decoded frame count from an independent FFprobe read.
+decoded_frame_count() {
+    local video_path=$1
+    "$FFPROBE" -v error -count_frames -select_streams v:0 \
+        -show_entries stream=nb_read_frames -of csv=p=0 "$video_path"
+}
+
+# Sanitizes ffprobe -show_entries row streams before string comparison:
+# strips carriage returns and a trailing CSV comma. The Windows FFmpeg
+# builds (9.0.2-essentials on the CI runner) emit CRLF line endings plus an
+# extra comma after the final field of a row, where dev builds emit bare LF
+# rows. Values are otherwise identical; normalizing the framing keeps every
+# comparison below version-agnostic.
+sanitize_probe_rows() {
+    tr -d '\r' | sed 's/,$//'
+}
+
+# Asserts that a fixture decodes to the expected count and luma values.
+verify_pattern() {
+    local video_path=$1
+    local name=$2
+    local width=$3
+    local height=$4
+    local expected_frames=$5
+    local first_value=$6
+    local second_value=$7
+    local change_frame=$8
+
+    local actual_frames
+    actual_frames=$(decoded_frame_count "$video_path")
+    [[ "$actual_frames" == "$expected_frames" ]] ||
+        fail "$name decoded $actual_frames frames; expected $expected_frames."
+
+    local before after
+    before=$(gray_frame_mean "$video_path" $((change_frame - 1)) "$width" "$height") ||
+        fail "$name: could not read the frame before the change."
+    after=$(gray_frame_mean "$video_path" "$change_frame" "$width" "$height") ||
+        fail "$name: could not read the frame at the change."
+
+    awk -v b="$before" -v a="$after" -v eb="$first_value" -v ea="$second_value" \
+        'BEGIN {
+            if (b < eb - 1 || b > eb + 1) exit 1
+            if (a < ea - 1 || a > ea + 1) exit 1
+        }' ||
+        fail "$name: expected luma $first_value then $second_value; read $before then $after."
+}
+
+require_command "$FFMPEG"
+require_command "$FFPROBE"
+require_command dd
+require_command od
+require_command awk
+
+mkdir -p -- "$TARGET_ROOT"
+if [[ -e "$FIXTURE_DIR" || -L "$FIXTURE_DIR" ]]; then
+    [[ -d "$FIXTURE_DIR" && ! -L "$FIXTURE_DIR" ]] ||
+        fail "Refusing to write '$FIXTURE_DIR' because it is not a regular directory."
+    [[ -f "$MARKER" && ! -L "$MARKER" ]] ||
+        fail "Refusing to write '$FIXTURE_DIR' because it has no fixture-output marker."
+
+    shopt -s nullglob dotglob
+    for entry in "$FIXTURE_DIR"/*; do
+        name=${entry##*/}
+        case "$name" in
+            fixture-output.marker|*.mkv|*.mp4|*.m4a|*.bin) ;;
+            *) fail "Refusing to write '$FIXTURE_DIR'; unexpected entry '$name' exists." ;;
+        esac
+        [[ -f "$entry" && ! -L "$entry" ]] ||
+            fail "Refusing to write '$FIXTURE_DIR'; '$name' is not a regular file."
+    done
+    # Only this script's own outputs may be replaced.
+    rm -f -- "$FIXTURE_DIR"/*.mkv "$FIXTURE_DIR"/*.mp4 "$FIXTURE_DIR"/*.m4a "$FIXTURE_DIR"/*.bin
+else
+    mkdir -- "$FIXTURE_DIR"
+    printf 'Generated by scripts/make-m1-fixtures.sh.\n' > "$MARKER"
+fi
+
+ffmpeg_version=$("$FFMPEG" -version | sed -n '1p')
+ffprobe_version=$("$FFPROBE" -version | sed -n '1p')
+
+# --- 8-bit H.264 MP4 with B-frames, display order -------------------------
+# Frames 0-5 use luma 32, frames 6-11 use luma 220, at 96x64 and 12 fps.
+cut8_mp4="$FIXTURE_DIR/cut8-bframes.mp4"
+"$FFMPEG" -hide_banner -loglevel error -y -f lavfi \
+    -i "nullsrc=size=96x64:rate=12:duration=1,geq=lum='if(lt(N,6),32,220)':cb=128:cr=128" \
+    -frames:v 12 -an -c:v libx264 -preset medium -crf 18 -g 12 -bf 2 \
+    -x264-params b-adapt=0 -pix_fmt yuv420p "$cut8_mp4"
+verify_pattern "$cut8_mp4" "cut8-bframes.mp4" 96 64 12 32 220 6
+
+# --- 8-bit FFV1 MKV -------------------------------------------------------
+cut8_mkv="$FIXTURE_DIR/cut8.mkv"
+"$FFMPEG" -hide_banner -loglevel error -y -f lavfi \
+    -i "nullsrc=size=96x64:rate=12:duration=1,geq=lum='if(lt(N,6),32,220)':cb=128:cr=128" \
+    -frames:v 12 -an -c:v ffv1 -level 3 -g 12 -pix_fmt yuv420p "$cut8_mkv"
+verify_pattern "$cut8_mkv" "cut8.mkv" 96 64 12 32 220 6
+
+# --- 10-bit FFV1 MKV ------------------------------------------------------
+# The same pattern at 10-bit depth. Luma 128 then 880 is the 10-bit equivalent
+# of 8-bit 32 then 220, so the documented reduction can be checked directly.
+cut10_mkv="$FIXTURE_DIR/cut10.mkv"
+"$FFMPEG" -hide_banner -loglevel error -y -f lavfi \
+    -i "nullsrc=size=96x64:rate=12:duration=1,format=yuv420p10le,geq=lum='if(lt(N,6),128,880)':cb=512:cr=512" \
+    -frames:v 12 -an -c:v ffv1 -level 3 -g 12 "$cut10_mkv"
+verify_pattern "$cut10_mkv" "cut10.mkv" 96 64 12 32 220 6
+
+# --- Odd source dimensions ------------------------------------------------
+odd_mkv="$FIXTURE_DIR/odd-97x65.mkv"
+"$FFMPEG" -hide_banner -loglevel error -y -f lavfi \
+    -i "nullsrc=size=97x65:rate=10:duration=0.5,geq=lum='if(lt(N,3),40,200)':cb=128:cr=128" \
+    -frames:v 5 -an -c:v ffv1 -level 3 -pix_fmt yuv420p "$odd_mkv"
+verify_pattern "$odd_mkv" "odd-97x65.mkv" 97 65 5 40 200 3
+
+# --- Small square source --------------------------------------------------
+small_mkv="$FIXTURE_DIR/small-48x48.mkv"
+"$FFMPEG" -hide_banner -loglevel error -y -f lavfi \
+    -i "nullsrc=size=48x48:rate=10:duration=0.5,geq=lum='if(lt(N,3),40,200)':cb=128:cr=128" \
+    -frames:v 5 -an -c:v ffv1 -level 3 -pix_fmt yuv420p "$small_mkv"
+verify_pattern "$small_mkv" "small-48x48.mkv" 48 48 5 40 200 3
+
+# --- Variable frame rate --------------------------------------------------
+# Frame timing changes mid-stream. Index mode must not invent a rate.
+vfr_mp4="$FIXTURE_DIR/vfr.mp4"
+"$FFMPEG" -hide_banner -loglevel error -y -f lavfi \
+    -i "nullsrc=size=64x48:rate=30:duration=1,geq=lum='if(lt(N,10),40,200)':cb=128:cr=128" \
+    -frames:v 20 -vf "setpts='if(lt(N,10),N/3,10/3+(N-10)/30)/TB'" \
+    -fps_mode passthrough -an -c:v libx264 -crf 18 -pix_fmt yuv420p "$vfr_mp4"
+vfr_frames=$(decoded_frame_count "$vfr_mp4")
+[[ "$vfr_frames" == "20" ]] || fail "vfr.mp4 decoded $vfr_frames frames; expected 20."
+vfr_rates=$("$FFPROBE" -v error -select_streams v:0 \
+    -show_entries stream=r_frame_rate,avg_frame_rate -of csv=p=0 "$vfr_mp4")
+IFS=, read -r vfr_r vfr_avg <<< "$vfr_rates"
+[[ "$vfr_r" != "$vfr_avg" ]] ||
+    fail "vfr.mp4 reports equal nominal and average rates '$vfr_r'; it is not variable."
+
+# --- Nonzero stream start time -------------------------------------------
+late_mp4="$FIXTURE_DIR/late-start.mp4"
+"$FFMPEG" -hide_banner -loglevel error -y -f lavfi \
+    -i "nullsrc=size=64x48:rate=10:duration=0.5,geq=lum='if(lt(N,3),40,200)':cb=128:cr=128" \
+    -frames:v 5 -vf "setpts=PTS+2/TB" -an -c:v libx264 -crf 18 -pix_fmt yuv420p "$late_mp4"
+late_start=$("$FFPROBE" -v error -select_streams v:0 \
+    -show_entries stream=start_time -of csv=p=0 "$late_mp4")
+awk -v value="$late_start" 'BEGIN { exit !(value > 1.0) }' ||
+    fail "late-start.mp4 reports start time '$late_start'; expected a nonzero start."
+
+# --- Multiple streams, for absolute stream selection ---------------------
+multi_mp4="$FIXTURE_DIR/multi-stream.mp4"
+"$FFMPEG" -hide_banner -loglevel error -y \
+    -f lavfi -i "nullsrc=size=64x48:rate=10:duration=0.5,geq=lum='if(lt(N,3),40,200)':cb=128:cr=128" \
+    -f lavfi -i "sine=frequency=440:duration=0.5" \
+    -map 0:v -map 1:a -frames:v 5 -c:v libx264 -crf 18 -pix_fmt yuv420p -c:a aac "$multi_mp4"
+multi_types=$("$FFPROBE" -v error -show_entries stream=index,codec_type -of csv=p=0 "$multi_mp4")
+[[ "$multi_types" == *"0,video"* && "$multi_types" == *"1,audio"* ]] ||
+    fail "multi-stream.mp4 does not have video at index 0 and audio at index 1: $multi_types"
+
+# --- Audio only, for the no-video-stream outcome -------------------------
+audio_only="$FIXTURE_DIR/audio-only.m4a"
+"$FFMPEG" -hide_banner -loglevel error -y -f lavfi \
+    -i "sine=frequency=440:duration=0.5" -c:a aac "$audio_only"
+
+# --- Truncated container --------------------------------------------------
+# The file is cut in half so the decoder reaches EOF inside the frame stream.
+long_mkv="$FIXTURE_DIR/long.mkv"
+"$FFMPEG" -hide_banner -loglevel error -y -f lavfi \
+    -i "nullsrc=size=96x64:rate=12:duration=3,geq=lum='if(lt(N,18),32,220)':cb=128:cr=128" \
+    -frames:v 36 -an -c:v ffv1 -level 3 -pix_fmt yuv420p "$long_mkv"
+verify_pattern "$long_mkv" "long.mkv" 96 64 36 32 220 18
+
+truncated_mkv="$FIXTURE_DIR/truncated.mkv"
+long_size=$(wc -c < "$long_mkv" | tr -d '[:space:]')
+head -c $((long_size / 2)) "$long_mkv" > "$truncated_mkv"
+[[ -s "$truncated_mkv" ]] || fail "truncated.mkv is empty."
+
+# --- Damaged container ----------------------------------------------------
+# A byte range in the middle is overwritten so decoding fails after the header.
+damaged_mkv="$FIXTURE_DIR/damaged.mkv"
+cp "$long_mkv" "$damaged_mkv"
+damaged_size=$(wc -c < "$damaged_mkv" | tr -d '[:space:]')
+python - "$damaged_mkv" "$damaged_size" <<'PY'
+import sys
+
+path, size = sys.argv[1], int(sys.argv[2])
+start, stop = size // 3, min(size, size // 3 + 400)
+with open(path, "r+b") as handle:
+    handle.seek(start)
+    handle.write(b"\xff" * (stop - start))
+PY
+
+# --- Empty file -----------------------------------------------------------
+: > "$FIXTURE_DIR/empty.bin"
+
+# --- Not a video ----------------------------------------------------------
+printf 'This file is intentionally not a video stream.\n' > "$FIXTURE_DIR/invalid.bin"
+
+# --- Midstream luma-format change -----------------------------------------
+# Two constant-quality H.264 segments of the same size, the second encoded
+# 10-bit; concat copies them, so the stream carries an in-band SPS change at
+# frame 6. The decoder's own frames, not the container header, decide the
+# luma format, so this is the input the reader's format-change test needs.
+seg8="$FIXTURE_DIR/mixedseg8.mp4"
+seg10="$FIXTURE_DIR/mixedseg10.mp4"
+"$FFMPEG" -hide_banner -loglevel error -y -f lavfi \
+    -i "nullsrc=size=96x64:rate=12:duration=0.5,geq=lum='if(lt(N,6),32,220)':cb=128:cr=128" \
+    -frames:v 6 -an -c:v libx264 -preset ultrafast -g 6 -pix_fmt yuv420p "$seg8"
+"$FFMPEG" -hide_banner -loglevel error -y -f lavfi \
+    -i "nullsrc=size=96x64:rate=12:duration=0.5,format=yuv420p10le,geq=lum='if(lt(N,6),128,880)':cb=512:cr=512" \
+    -frames:v 6 -an -c:v libx264 -preset ultrafast -profile:v high10 -g 6 \
+    -pix_fmt yuv420p10le "$seg10"
+# The concat list lives beside its segments and names them relatively, so the
+# demuxer resolves them the same way on every platform. The `.bin` name is the
+# extension this directory already accepts.
+concat_list="$FIXTURE_DIR/mix-concat.bin"
+printf "file 'mixedseg8.mp4'\nfile 'mixedseg10.mp4'\n" > "$concat_list"
+"$FFMPEG" -hide_banner -loglevel error -y -f concat -safe 0 -i "$concat_list" \
+    -c copy "$FIXTURE_DIR/mixed-depth.mp4"
+rm -f -- "$concat_list" "$seg8" "$seg10"
+mixed_depth_formats=$("$FFPROBE" -v error -select_streams v:0 \
+    -show_entries frame=pix_fmt -of csv=p=0 "$FIXTURE_DIR/mixed-depth.mp4" \
+    | sanitize_probe_rows)
+[[ "$(printf '%s\n' "$mixed_depth_formats" | sed -n '1p')" == "yuv420p" ]] ||
+    fail "mixed-depth.mp4 frame 0 is not yuv420p."
+[[ "$(printf '%s\n' "$mixed_depth_formats" | sed -n '7p')" == "yuv420p10le" ]] ||
+    fail "mixed-depth.mp4 frame 6 is not yuv420p10le; the format did not change midstream."
+mixed_depth_frames=$(printf '%s\n' "$mixed_depth_formats" | grep -c .)
+[[ "$mixed_depth_frames" == "12" ]] ||
+    fail "mixed-depth.mp4 decoded $mixed_depth_frames frames; expected 12."
+
+# --- Midstream size change --------------------------------------------------
+# Same construction with two 8-bit segments of different sizes.
+sega="$FIXTURE_DIR/mixedsega.mp4"
+segb="$FIXTURE_DIR/mixedsegb.mp4"
+"$FFMPEG" -hide_banner -loglevel error -y -f lavfi \
+    -i "nullsrc=size=96x64:rate=12:duration=0.5,geq=lum='32':cb=128:cr=128" \
+    -frames:v 6 -an -c:v libx264 -preset ultrafast -g 6 -pix_fmt yuv420p "$sega"
+"$FFMPEG" -hide_banner -loglevel error -y -f lavfi \
+    -i "nullsrc=size=64x48:rate=12:duration=0.5,geq=lum='220':cb=128:cr=128" \
+    -frames:v 6 -an -c:v libx264 -preset ultrafast -g 6 -pix_fmt yuv420p "$segb"
+printf "file 'mixedsega.mp4'\nfile 'mixedsegb.mp4'\n" > "$concat_list"
+"$FFMPEG" -hide_banner -loglevel error -y -f concat -safe 0 -i "$concat_list" \
+    -c copy "$FIXTURE_DIR/mixed-size.mp4"
+rm -f -- "$concat_list" "$sega" "$segb"
+mixed_size_geometry=$("$FFPROBE" -v error -select_streams v:0 \
+    -show_entries frame=width,height -of csv=p=0 "$FIXTURE_DIR/mixed-size.mp4" \
+    | sanitize_probe_rows)
+[[ "$(printf '%s\n' "$mixed_size_geometry" | sed -n '1p')" == "96,64" ]] ||
+    fail "mixed-size.mp4 frame 0 is not 96x64."
+[[ "$(printf '%s\n' "$mixed_size_geometry" | sed -n '7p')" == "64,48" ]] ||
+    fail "mixed-size.mp4 frame 6 is not 64x48; the size did not change midstream."
+mixed_size_frames=$(printf '%s\n' "$mixed_size_geometry" | grep -c .)
+[[ "$mixed_size_frames" == "12" ]] ||
+    fail "mixed-size.mp4 decoded $mixed_size_frames frames; expected 12."
+
+printf '{\n  "fixture_set_version": 1,\n  "script": "scripts/make-m1-fixtures.sh",\n  "ffmpeg": %s,\n  "ffprobe": %s,\n  "fixture_directory": %s,\n  "expected": {\n    "cut8-bframes.mp4": {"frames": 12, "width": 96, "height": 64, "change_frame": 6, "b_frames": true},\n    "cut8.mkv": {"frames": 12, "width": 96, "height": 64, "change_frame": 6},\n    "cut10.mkv": {"frames": 12, "width": 96, "height": 64, "change_frame": 6, "depth": 10},\n    "odd-97x65.mkv": {"frames": 5, "width": 97, "height": 65, "change_frame": 3},\n    "small-48x48.mkv": {"frames": 5, "width": 48, "height": 48, "change_frame": 3},\n    "vfr.mp4": {"frames": 20, "width": 64, "height": 48, "nominal_rate": %s, "average_rate": %s},\n    "late-start.mp4": {"frames": 5, "width": 64, "height": 48, "start_time": %s},\n    "multi-stream.mp4": {"video_index": 0, "audio_index": 1},\n    "audio-only.m4a": {"video_streams": 0},\n    "long.mkv": {"frames": 36, "width": 96, "height": 64, "change_frame": 18},\n    "truncated.mkv": {"derived_from": "long.mkv", "outcome": "incomplete"},\n    "damaged.mkv": {"derived_from": "long.mkv", "outcome": "incomplete"},\n    "mixed-depth.mp4": {"frames": 12, "width": 96, "height": 64, "pixel_format_change_frame": 6, "outcome": "rejected"},\n    "mixed-size.mp4": {"frames": 12, "pixel_format": "yuv420p", "size_change_frame": 6, "outcome": "rejected"},\n    "empty.bin": {"outcome": "invalid"},\n    "invalid.bin": {"outcome": "invalid"}\n  }\n}\n' \
+    "$(json_quote "$ffmpeg_version")" \
+    "$(json_quote "$ffprobe_version")" \
+    "$(json_quote "$FIXTURE_DIR")" \
+    "$(json_quote "$vfr_r")" \
+    "$(json_quote "$vfr_avg")" \
+    "$late_start"

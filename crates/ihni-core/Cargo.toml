@@ -1,0 +1,11 @@
+[package]
+name = "ihni-core"
+version = "0.1.0"
+edition = "2024"
+description = "IHNI detection core: ordered WWXD hard-cut detection over prepared frames"
+publish = false
+
+[dependencies]
+
+[dev-dependencies]
+serde_json = "1.0"

@@ -1,0 +1,130 @@
+# input=cut8.mkv stream=0 source=96x64 pix_fmt=yuv420p analysis=540x360
+0 a1ebdcdb027ac6a5
+1 a1ebdcdb027ac6a5
+2 a1ebdcdb027ac6a5
+3 a1ebdcdb027ac6a5
+4 a1ebdcdb027ac6a5
+5 a1ebdcdb027ac6a5
+6 246eab8aeb6f3325
+7 246eab8aeb6f3325
+8 246eab8aeb6f3325
+9 246eab8aeb6f3325
+10 246eab8aeb6f3325
+11 246eab8aeb6f3325
+# end frames=12
+# input=cut10.mkv stream=0 source=96x64 pix_fmt=yuv420p10le analysis=540x360
+0 a1ebdcdb027ac6a5
+1 a1ebdcdb027ac6a5
+2 a1ebdcdb027ac6a5
+3 a1ebdcdb027ac6a5
+4 a1ebdcdb027ac6a5
+5 a1ebdcdb027ac6a5
+6 246eab8aeb6f3325
+7 246eab8aeb6f3325
+8 246eab8aeb6f3325
+9 246eab8aeb6f3325
+10 246eab8aeb6f3325
+11 246eab8aeb6f3325
+# end frames=12
+# input=long.mkv stream=0 source=96x64 pix_fmt=yuv420p analysis=540x360
+0 a1ebdcdb027ac6a5
+1 a1ebdcdb027ac6a5
+2 a1ebdcdb027ac6a5
+3 a1ebdcdb027ac6a5
+4 a1ebdcdb027ac6a5
+5 a1ebdcdb027ac6a5
+6 a1ebdcdb027ac6a5
+7 a1ebdcdb027ac6a5
+8 a1ebdcdb027ac6a5
+9 a1ebdcdb027ac6a5
+10 a1ebdcdb027ac6a5
+11 a1ebdcdb027ac6a5
+12 a1ebdcdb027ac6a5
+13 a1ebdcdb027ac6a5
+14 a1ebdcdb027ac6a5
+15 a1ebdcdb027ac6a5
+16 a1ebdcdb027ac6a5
+17 a1ebdcdb027ac6a5
+18 246eab8aeb6f3325
+19 246eab8aeb6f3325
+20 246eab8aeb6f3325
+21 246eab8aeb6f3325
+22 246eab8aeb6f3325
+23 246eab8aeb6f3325
+24 246eab8aeb6f3325
+25 246eab8aeb6f3325
+26 246eab8aeb6f3325
+27 246eab8aeb6f3325
+28 246eab8aeb6f3325
+29 246eab8aeb6f3325
+30 246eab8aeb6f3325
+31 246eab8aeb6f3325
+32 246eab8aeb6f3325
+33 246eab8aeb6f3325
+34 246eab8aeb6f3325
+35 246eab8aeb6f3325
+# end frames=36
+# input=cut8-bframes.mp4 stream=0 source=96x64 pix_fmt=yuv420p analysis=540x360
+0 a1ebdcdb027ac6a5
+1 a1ebdcdb027ac6a5
+2 a1ebdcdb027ac6a5
+3 a1ebdcdb027ac6a5
+4 a1ebdcdb027ac6a5
+5 a1ebdcdb027ac6a5
+6 246eab8aeb6f3325
+7 246eab8aeb6f3325
+8 246eab8aeb6f3325
+9 246eab8aeb6f3325
+10 246eab8aeb6f3325
+11 246eab8aeb6f3325
+# end frames=12
+# input=late-start.mp4 stream=0 source=64x48 pix_fmt=yuv420p analysis=480x360
+0 341239c328989f25
+1 341239c328989f25
+2 341239c328989f25
+3 58e0af9563179f25
+4 58e0af9563179f25
+# end frames=5
+# input=multi-stream.mp4 stream=0 source=64x48 pix_fmt=yuv420p analysis=480x360
+0 341239c328989f25
+1 341239c328989f25
+2 341239c328989f25
+3 58e0af9563179f25
+4 58e0af9563179f25
+# end frames=5
+# input=odd-97x65.mkv stream=0 source=97x65 pix_fmt=yuv420p analysis=536x360
+0 232bcb6c5bfb3625
+1 232bcb6c5bfb3625
+2 232bcb6c5bfb3625
+3 ec83a66cb017f625
+4 ec83a66cb017f625
+# end frames=5
+# input=small-48x48.mkv stream=0 source=48x48 pix_fmt=yuv420p analysis=360x360
+0 8d2477171bbf8025
+1 8d2477171bbf8025
+2 8d2477171bbf8025
+3 a715fda3dcbec025
+4 a715fda3dcbec025
+# end frames=5
+# input=vfr.mp4 stream=0 source=64x48 pix_fmt=yuv420p analysis=480x360
+0 341239c328989f25
+1 341239c328989f25
+2 341239c328989f25
+3 341239c328989f25
+4 341239c328989f25
+5 341239c328989f25
+6 341239c328989f25
+7 341239c328989f25
+8 341239c328989f25
+9 341239c328989f25
+10 58e0af9563179f25
+11 58e0af9563179f25
+12 58e0af9563179f25
+13 58e0af9563179f25
+14 58e0af9563179f25
+15 58e0af9563179f25
+16 58e0af9563179f25
+17 58e0af9563179f25
+18 58e0af9563179f25
+19 58e0af9563179f25
+# end frames=20

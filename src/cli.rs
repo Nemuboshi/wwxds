@@ -1,0 +1,75 @@
+use std::path::PathBuf;
+
+use clap::Parser;
+
+#[derive(Debug, Parser)]
+#[command(version, about = "Standalone WWXD hard-cut detector")]
+pub(crate) struct Cli {
+    /// Input video file.
+    #[arg(value_name = "INPUT")]
+    pub(crate) input: PathBuf,
+
+    /// Keyframe output file. Omitted writes the input name with `.kf.txt`
+    /// appended, so `video.mkv` becomes `video.mkv.kf.txt`. An existing file is
+    /// never replaced.
+    #[arg(short, long, value_name = "FILE")]
+    pub(crate) output: Option<PathBuf>,
+
+    /// Absolute input video stream index.
+    #[arg(long, value_name = "INDEX")]
+    pub(crate) stream_index: Option<u32>,
+
+    /// Analysis height in pixels. Width follows the source aspect ratio.
+    #[arg(long, value_name = "PIXELS")]
+    pub(crate) analysis_height: Option<u32>,
+
+    /// Decoder thread count passed to FFmpeg. Omitted lets FFmpeg choose.
+    #[arg(long, value_name = "N")]
+    pub(crate) decoder_threads: Option<u32>,
+
+    /// Write stage timings to standard error after a successful run.
+    #[arg(long)]
+    pub(crate) stats: bool,
+
+    /// Suppress the periodic progress lines on standard error. Completion and
+    /// error messages are still written.
+    #[arg(long)]
+    pub(crate) no_progress: bool,
+}
+
+impl Cli {
+    /// The path the keyframe document is published to.
+    pub(crate) fn output_path(&self) -> PathBuf {
+        self.output
+            .clone()
+            .unwrap_or_else(|| ihni::keyframes::default_output_path(&self.input))
+    }
+
+    /// Validates settings the argument parser cannot express.
+    ///
+    /// An output that names the input would ask the tool to overwrite the video
+    /// it is reading, so it is rejected as an argument error before any decoding
+    /// starts rather than left to the publish stage.
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if let Some(height) = self.analysis_height
+            && !(48..=4096).contains(&height)
+        {
+            return Err(format!(
+                "--analysis-height {height} is outside the supported range 48..=4096"
+            ));
+        }
+        if let Some(threads) = self.decoder_threads
+            && threads == 0
+        {
+            return Err("--decoder-threads must be at least 1".to_owned());
+        }
+        let output = self.output_path();
+        if output == self.input {
+            return Err(format!(
+                "the output path '{}' is the input file; choose a different file",
+                output.display()
+            ));
+        }
+        Ok(())
+    }
+}

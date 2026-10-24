@@ -1,0 +1,12 @@
+# Local agent state.
+.pi/**
+
+# Cargo build output, including standalone benchmark crates.
+target/
+
+# Python bytecode and test caches.
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
