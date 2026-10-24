@@ -90,8 +90,10 @@ CUDA zero-copy path; integrated GPUs are covered by the same backend.
 ### 4.6 Integer-scale analysis sizes; fractional geometries removed
 - **Change**: the analysis size is now the source divided by the smallest
   integer factor that brings the height to the target (360) or below; a
-  source the factor cannot reach is analyzed natively, never upscaled or
-  fractionally scaled (`docs/Architecture.md` §4). The filter's fractional
+  source the factor cannot reach is still divided by its smallest common
+  factor above one, and only a source with no common factor is analyzed
+  natively — never upscaled or fractionally scaled (`docs/Architecture.md`
+  §4). The filter's fractional
   coverage path — weight tables, 64-bit accumulators, a general vertical
   pass — is deleted, and the D3D11 shader now covers every geometry a run
   can have.

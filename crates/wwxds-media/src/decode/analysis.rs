@@ -41,10 +41,12 @@ impl AnalysisSize {
     /// The scale factor is the smallest integer that divides both source
     /// dimensions and brings the height to `target_height` or below; the
     /// analysis size is the source divided by it. A source already at or
-    /// below the target height is analyzed natively, and so is a source no
-    /// divisor can bring to the target: the analysis plane is never larger
-    /// than the source and never fractional. Every result is checked against
-    /// the detector bounds; a source no valid factor exists for is an error.
+    /// below the target height is analyzed natively. A source no divisor
+    /// brings to the target is still divided by its smallest common factor
+    /// above one — the analysis plane is never larger than the source and
+    /// never fractional — and only a source whose dimensions share no factor
+    /// above one is analyzed natively. Every result is checked against the
+    /// detector bounds; a source no valid factor exists for is an error.
     pub fn for_source_height(
         source_width: u32,
         source_height: u32,
@@ -62,9 +64,13 @@ impl AnalysisSize {
 
         // The factor must divide both dimensions, so it divides their gcd.
         // Ascending order makes the first hit the largest result that
-        // reaches the target, and the first valid candidate the fallback.
+        // reaches the target. `native` holds the k = 1 result and `partial`
+        // the smallest factor above one: when nothing reaches the target,
+        // the partial downscale still divides the work, so it wins over the
+        // native plane.
         let common = gcd(source_width, source_height);
-        let mut fallback = None;
+        let mut native = None;
+        let mut partial = None;
         for factor in 1..=common {
             if !common.is_multiple_of(factor) {
                 continue;
@@ -79,12 +85,17 @@ impl AnalysisSize {
             if size.height <= target_height {
                 return Ok(size);
             }
-            fallback.get_or_insert(size);
+            if factor > 1 {
+                partial.get_or_insert(size);
+            }
+            native.get_or_insert(size);
         }
-        fallback.ok_or(AnalysisSizeError::NoSupportedScale {
-            source_width,
-            source_height,
-        })
+        partial
+            .or(native)
+            .ok_or(AnalysisSizeError::NoSupportedScale {
+                source_width,
+                source_height,
+            })
     }
 
     /// Builds an analysis size directly, for tests and explicit configurations.
@@ -267,15 +278,20 @@ mod tests {
     }
 
     #[test]
-    fn a_source_no_divisor_reaches_the_target_is_analyzed_natively() {
+    fn a_source_no_divisor_reaches_the_target_is_still_divided() {
         // The only common factors of 1366x768 are 1 and 2, and 768/2 = 384 is
-        // above the target, so the source is analyzed natively.
+        // above the target, but halving still divides the work four ways.
         let size = AnalysisSize::for_source(1366, 768).expect("1366x768 derives");
-        assert_eq!((size.width(), size.height()), (1366, 768));
+        assert_eq!((size.width(), size.height()), (683, 384));
 
-        // 854x480: 854/2 = 427, an odd width, but oddness is allowed.
+        // 854x480: k = 2 reaches the target outright (240 <= 360).
         let size = AnalysisSize::for_source(854, 480).expect("854x480 derives");
         assert_eq!((size.width(), size.height()), (427, 240));
+
+        // Two prime dimensions share no factor above one, so the source is
+        // analyzed natively.
+        let size = AnalysisSize::for_source(1367, 769).expect("1367x769 derives");
+        assert_eq!((size.width(), size.height()), (1367, 769));
     }
 
     #[test]
