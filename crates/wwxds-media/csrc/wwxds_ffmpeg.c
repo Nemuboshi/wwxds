@@ -914,7 +914,6 @@ static int wwxds_d3d11_build(wwxds_input *in, const wwxds_frame_view *view,
             return -1;
         }
     }
-    fprintf(stderr, "%s\n", source);
 
     ID3DBlob *code = NULL;
     ID3DBlob *diagnostics = NULL;
